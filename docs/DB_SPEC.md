@@ -1,0 +1,188 @@
+﻿# DB仕様書
+
+Datum Forge は、ユーザー定義テーブル本体と、アプリが挙動を理解するためのメタテーブルを同じ SQLite DB に保存する。
+
+## 採用する型
+
+- `text` -> `TEXT`
+- `integer` -> `INTEGER`
+- `real` -> `REAL`
+- `boolean` -> `INTEGER` (`0` / `1`)
+- `date` -> `INTEGER` (`yyyyMMdd`)
+- `image` -> `TEXT` (ローカルファイルパス)
+- `single_select` -> `INTEGER` (`select_options.option_no`)
+- `reference` -> `INTEGER` (参照先レコードID)
+
+## メタテーブル
+
+### app_tables
+
+ユーザー定義テーブルの一覧を管理する。
+
+- `id`
+- `table_name`
+- `display_name`
+- `label_column_id`
+- `sort_order`
+- `created_at`
+- `updated_at`
+
+### app_table_columns
+
+ユーザー定義テーブルのカラム定義を管理する。
+
+- `id`
+- `table_id`
+- `column_name`
+- `display_name`
+- `field_type`
+- `sort_order`
+- `select_option_group_id`
+- `ref_table_id`
+- `is_required`
+- `created_at`
+- `updated_at`
+
+テーブル削除時は、削除対象の物理テーブルと `app_tables` / `app_table_columns` の対象行を削除する。あわせて `record_tag_links`, `view_nav_folder_records`, `view_layout_card_column_bindings`, `view_layout_card_overrides` の対象 `table_id` の行を削除する。`app_table_columns.ref_table_id` から参照されているテーブルは削除をブロックし、参照元カラムを先に削除または変更する必要がある。
+
+### select_option_groups / select_options
+
+`single_select` 用の選択肢グループと選択肢を管理する。実データには `option_no` を保存し、表示時に対応する `label` を参照する。
+
+### record_tag_groups / record_tags / record_tag_group_links / record_tag_links
+
+レコードタグを管理する。タグとタググループの所属は `record_tag_group_links` を正とする。`record_tags.group_id` は使わない。
+
+### view_nav_nodes
+
+閲覧モード左サイドバーのカスタム目次フォルダーを管理する。
+
+- `id`
+- `node_type`
+- `parent_id`
+- `name`
+- `sort_order`
+- `created_at`
+- `updated_at`
+
+### view_nav_folder_records
+
+カスタム目次フォルダーに登録した既存レコードを管理する。
+
+- `id`
+- `folder_id`
+- `table_id`
+- `record_id`
+- `record_label`
+- `sort_order`
+- `created_at`
+- `updated_at`
+
+`folder_id`, `table_id`, `record_id` の組み合わせは一意とする。
+
+## 閲覧レイアウト
+
+新規DBでは、閲覧レイアウトはフォルダー用カード枠テンプレートに一本化する。廃止済みレイアウトテーブルは作成しない。
+
+### view_layout_templates
+
+カード枠テンプレート本体を管理する。テンプレートはテーブル非依存で、作成時は常にカード0件の空テンプレートとして開始する。
+
+- `id`
+- `name`
+- `scope_type` (`folder`)
+- `folder_id` (`NULL` の場合は共有テンプレート)
+- `created_at`
+- `updated_at`
+
+`table_id` は持たない。
+
+### view_layout_folder_template_assignments
+
+フォルダーに現在有効なテンプレートを割り当てる。
+
+- `folder_id`
+- `template_id`
+- `updated_at`
+
+フォルダー内レコードを開くときに割当がなければ、空のフォルダー専用テンプレートを自動作成して割り当てる。
+
+### view_layout_template_cards
+
+テンプレート内のカード枠を管理する。カード枠の追加はテンプレート編集画面の `カード追加` が唯一の初期作成導線。
+
+- `card_id`
+- `template_id`
+- `x`
+- `y`
+- `width`
+- `height`
+- `visible`
+- `background_color`
+- `text_color`
+- `font_size`
+- `text_direction`
+- `font_weight`
+- `text_align`
+- `padding`
+- `padding_top`
+- `padding_right`
+- `padding_bottom`
+- `padding_left`
+- `border_radius`
+- `show_label`
+- `sort_order`
+- `updated_at`
+
+### view_layout_card_column_bindings
+
+カード枠と、テーブルごとの表示カラムの紐付けを管理する。
+
+- `template_id`
+- `table_id`
+- `card_id`
+- `column_id`
+- `updated_at`
+
+同じカード枠でも、フォルダー内に複数テーブルのレコードがある場合はテーブルごとに異なるカラムへ紐付けられる。
+
+テンプレート編集画面のプレビューでは、このテーブル別紐付けを初期値として読み込む。ただし、テンプレート編集画面で行う一時紐付けはDBへ保存せず、永続的な変更はレコード表示画面の表示項目編集から `save_view_layout_card_column_bindings` で保存する。
+
+### view_layout_card_overrides
+
+レコード個別のカード枠差分を管理する。テンプレート本体は変更せず、位置、サイズ、表示状態、スタイル差分だけを保存する。
+
+- `template_id`
+- `table_id`
+- `record_id`
+- `card_id`
+- `offset_x`
+- `offset_y`
+- `offset_width`
+- `offset_height`
+- nullable style fields
+- `updated_at`
+
+カードをレコード個別に非表示にした場合は、テンプレート本体を変更せず、このテーブルの対象レコードだけの `visible` 差分として保存する。
+
+## 作成しないテーブル
+
+新規DBでは以下の廃止済みテーブルを作成しない。
+
+- `view_field_layouts`
+- `view_layout_template_items`
+- `view_field_layout_overrides`
+- `view_layout_template_assignments`
+
+## DBファイル
+
+- 既定パス: `.local/datum-forge.sqlite`
+- 設定ファイル: `.local/settings.json`
+- 設定キー: `dbPath`
+
+起動時に `ready`, `firstLaunch`, `missingDb`, `error` を判定し、必要な場合はDBセットアップ画面を表示する。
+
+新規DB作成は起動時DBセットアップ画面と設定画面から実行でき、どちらも `create_database_file` を使う。新規作成時のファイル名入力は拡張子なしの stem のみを受け付け、フロントエンドが必ず `.sqlite` を付けたファイル名を渡す。たとえば `project` と入力した場合の作成ファイル名は `project.sqlite` である。入力値に `.`、フォルダー区切り、`.db`、`.sqlite` などの拡張子を含めた場合は不正として扱う。
+
+設定画面から新規DBを作成した場合は、作成後に新しいDBを現在の接続先として保存し、アプリ状態を再読み込みする。同名ファイルが存在する場合は作成せずエラーにする。既存DBを開く処理では、既存ファイル互換のため `.sqlite` と `.db` の両方を許可する。
+

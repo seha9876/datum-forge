@@ -1,0 +1,531 @@
+﻿import { computed, onMounted, reactive, ref, watch } from "vue";
+
+import { useAppStore } from "../stores/app";
+
+import type {
+  AddColumnPayload,
+  AppColumn,
+  FieldType,
+  ReferenceChoice,
+  SaveOptionGroupPayload,
+  SelectOptionGroup,
+  SaveRecordPayload,
+  TableRecord,
+  UpdateLabelColumnPayload
+} from "../types";
+
+/** フィールド型を画面表示用ラベルへ変換する辞書です。 */
+const fieldTypeLabels: Record<FieldType, string> = {
+  text: "テキスト",
+  integer: "整数",
+  real: "小数",
+  boolean: "真偽値",
+  date: "日付",
+  image: "画像",
+  single_select: "単一選択",
+  reference: "参照"
+};
+
+/**
+ * 単一選択グループ作成時に最初から表示する初期選択肢です。
+ *
+ * @returns 空の選択肢行2件
+ */
+const defaultOptionRows = () => [
+  { clientKey: createOptionClientKey(), optionNo: 1, sortOrder: 1, label: "" },
+  { clientKey: createOptionClientKey(), optionNo: 2, sortOrder: 2, label: "" }
+];
+
+let optionClientKeySeed = 0;
+
+/**
+ * 選択肢行のクライアント側識別子を採番します。
+ *
+ * @returns 一意なクライアントキー
+ */
+function createOptionClientKey() {
+  optionClientKeySeed += 1;
+  return `option-${optionClientKeySeed}`;
+}
+
+function isRequiredValueEmpty(value: unknown) {
+  return (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "")
+  );
+}
+
+/**
+ * Datum Forge 全体で使うフォーム状態と操作関数をまとめて提供します。
+ *
+ * @returns テーブル・カラム・レコード・選択肢グループ操作に必要な状態と関数
+ */
+export function useDatumForge() {
+  /** API 呼び出しと状態更新をまとめるアプリストアです。 */
+  const store = useAppStore();
+
+  /** テーブル作成ダイアログの入力状態です。 */
+  const tableForm = reactive({
+    tableName: "",
+    displayName: ""
+  });
+
+  /** カラム追加フォームの入力状態です。 */
+  const columnForm = reactive<AddColumnPayload>({
+    tableId: 0,
+    columnName: "",
+    displayName: "",
+    fieldType: "text",
+    isRequired: false,
+    selectOptionGroupId: null,
+    refTableId: null
+  });
+
+  /** 単一選択グループ管理フォームの入力状態です。 */
+  const optionGroupForm = reactive<SaveOptionGroupPayload>({
+    name: "",
+    description: "",
+    options: defaultOptionRows()
+  });
+
+  /** 編集対象として選択中の単一選択グループIDです。新規作成時は null です。 */
+  const selectedOptionGroupId = ref<number | null>(null);
+
+  /** 編集中レコードのIDです。新規作成時は null を保ちます。 */
+  const editingRecordId = ref<number | null>(null);
+  /** レコード編集フォームにバインドする値の集合です。 */
+  const recordValues = ref<Record<string, unknown>>({});
+
+  /** カラム追加フォームで選択できるフィールド型一覧です。 */
+  const fieldTypes: FieldType[] = [
+    "text",
+    "integer",
+    "real",
+    "boolean",
+    "date",
+    "image",
+    "single_select",
+    "reference"
+  ];
+
+  /** サイドバーで選択中のテーブル詳細です。 */
+  const selectedTable = computed(() => store.currentTable);
+
+  watch(
+    () => store.selectedTableId,
+    (tableId) => {
+      if (!tableId) {
+        return;
+      }
+
+      // テーブル切り替え時に、カラム追加フォームとレコード編集状態を同期します。
+      columnForm.tableId = tableId;
+      resetRecordForm();
+    },
+    { immediate: true }
+  );
+
+  /**
+   * レコード入力フォームを新規作成状態へ戻します。
+   */
+  function resetRecordForm() {
+    recordValues.value = {};
+    editingRecordId.value = null;
+  }
+
+  /**
+   * 指定レコードをフォームへ読み込み、編集モードへ切り替えます。
+   *
+   * @param recordId 編集対象レコードID
+   */
+  function startEditRecord(recordId: number) {
+    const record = store.currentTable?.records.find(
+      (item) => item.id === recordId
+    );
+    if (!record) {
+      return;
+    }
+
+    recordValues.value = normalizeRecordValues(record);
+    editingRecordId.value = recordId;
+  }
+
+  /**
+   * レコード値をフォーム入力向けに正規化します。
+   *
+   * @param record 表示中テーブルのレコード
+   * @returns フォームへバインドできる値オブジェクト
+   */
+  function normalizeRecordValues(record: TableRecord) {
+    const normalized = { ...record.values };
+
+    // チェックボックスへ正しく渡せるよう、真偽値カラムだけ型を明示的にそろえます。
+    for (const column of store.currentTable?.columns ?? []) {
+      if (column.fieldType === "boolean" && column.columnName in normalized) {
+        normalized[column.columnName] = Boolean(normalized[column.columnName]);
+      }
+    }
+
+    return normalized;
+  }
+
+  /**
+   * フィールド種別に応じた HTML input type を返します。
+   *
+   * @param fieldType カラムの型
+   * @returns input 要素へ設定する type 値
+   */
+  function inputType(fieldType: FieldType) {
+    if (fieldType === "integer" || fieldType === "real") {
+      return "number";
+    }
+
+    if (fieldType === "date") {
+      return "date";
+    }
+
+    return "text";
+  }
+
+  /**
+   * フィールド種別の表示用ラベルを返します。
+   *
+   * @param fieldType カラムの型
+   * @returns 画面表示用ラベル
+   */
+  function fieldTypeLabel(fieldType: FieldType) {
+    return fieldTypeLabels[fieldType];
+  }
+
+  /**
+   * カラムの追加情報を表示用テキストへ整形します。
+   *
+   * @param column 対象カラム
+   * @returns 追加情報の表示文言
+   */
+  function fieldTypeMeta(column: AppColumn) {
+    if (column.fieldType === "single_select") {
+      const group = store.bootstrap?.optionGroups.find(
+        (item) => item.id === column.selectOptionGroupId
+      );
+      return group ? `グループ: ${group.name}` : "グループ未設定";
+    }
+
+    if (column.fieldType === "reference") {
+      const table = store.bootstrap?.tables.find(
+        (item) => item.id === column.refTableId
+      );
+      return table ? `参照先: ${table.displayName}` : "参照先未設定";
+    }
+
+    return "";
+  }
+
+  /**
+   * 参照型カラムに対応する候補一覧を返します。
+   *
+   * @param column 対象カラム
+   * @returns 参照候補一覧
+   */
+  function referenceChoices(column: AppColumn) {
+    if (!column.refTableId) {
+      return [] as ReferenceChoice[];
+    }
+
+    return store.references[column.refTableId] ?? [];
+  }
+
+  /**
+   * テーブル作成フォームを送信します。
+   */
+  async function submitTable() {
+    if (!tableForm.tableName || !tableForm.displayName) {
+      return;
+    }
+
+    await store.createTable({ ...tableForm });
+    tableForm.tableName = "";
+    tableForm.displayName = "";
+  }
+
+  /**
+   * カラム作成フォームを送信し、完了後に初期値へ戻します。
+   */
+  async function submitColumn() {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    columnForm.tableId = store.selectedTableId;
+    await store.addColumn({ ...columnForm });
+
+    Object.assign(columnForm, {
+      tableId: store.selectedTableId,
+      columnName: "",
+      displayName: "",
+      fieldType: "text",
+      isRequired: false,
+      selectOptionGroupId: null,
+      refTableId: null
+    } satisfies AddColumnPayload);
+  }
+
+  /**
+   * 指定カラムを削除し、レコード編集中状態もクリアします。
+   *
+   * @param columnId 削除対象カラムID
+   */
+  async function deleteColumn(columnId: number) {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    await store.deleteColumn({
+      tableId: store.selectedTableId,
+      columnId
+    });
+    resetRecordForm();
+  }
+
+  /**
+   * カラム名と表示名を更新します。
+   *
+   * @param columnId 更新対象カラムID
+   * @param columnName 保存する物理名
+   * @param displayName 保存する表示名
+   */
+  async function updateColumn(
+    columnId: number,
+    columnName: string,
+    displayName: string,
+    isRequired: boolean
+  ) {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    await store.updateColumn({
+      tableId: store.selectedTableId,
+      columnId,
+      columnName,
+      displayName,
+      isRequired
+    });
+    resetRecordForm();
+  }
+
+  /**
+   * テーブルの主表示カラムを更新します。
+   *
+   * @param labelColumnId 主表示に使うカラムID
+   */
+  async function updateLabelColumn(labelColumnId: number | null) {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    const payload: UpdateLabelColumnPayload = {
+      tableId: store.selectedTableId,
+      labelColumnId
+    };
+
+    await store.updateLabelColumn(payload);
+  }
+
+  /**
+   * ドラッグ後のカラム順を保存します。
+   *
+   * @param orderedColumns 並び替え後のカラム一覧
+   */
+  async function reorderColumns(orderedColumns: AppColumn[]) {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    await store.reorderColumns({
+      tableId: store.selectedTableId,
+      orderedColumnIds: orderedColumns.map((column) => column.id)
+    });
+  }
+
+  /**
+   * 単一選択グループに空の選択肢行を追加します。
+   */
+  function addOptionRow() {
+    optionGroupForm.options.push({
+      clientKey: createOptionClientKey(),
+      optionNo: optionGroupForm.options.length + 1,
+      sortOrder: optionGroupForm.options.length + 1,
+      label: ""
+    });
+    syncOptionOrdering();
+  }
+
+  /**
+   * 指定位置の選択肢行を削除します。
+   *
+   * @param index 削除する選択肢行の位置
+   */
+  function removeOptionRow(index: number) {
+    if (optionGroupForm.options.length <= 1) {
+      return;
+    }
+
+    optionGroupForm.options.splice(index, 1);
+    syncOptionOrdering();
+  }
+
+  /**
+   * 選択肢の番号と表示順を配列順にそろえます。
+   */
+  function syncOptionOrdering() {
+    optionGroupForm.options.forEach((option, index) => {
+      option.optionNo = index + 1;
+      option.sortOrder = index + 1;
+    });
+  }
+
+  /**
+   * 単一選択グループフォームを新規作成状態へ戻します。
+   */
+  function resetOptionGroupForm() {
+    selectedOptionGroupId.value = null;
+    Object.assign(optionGroupForm, {
+      id: undefined,
+      name: "",
+      description: "",
+      options: defaultOptionRows()
+    } satisfies SaveOptionGroupPayload);
+  }
+
+  /**
+   * 既存の単一選択グループをフォームへ読み込み、編集状態へ切り替えます。
+   *
+   * @param group 編集対象の単一選択グループ
+   */
+  function startEditOptionGroup(group: SelectOptionGroup) {
+    selectedOptionGroupId.value = group.id;
+    Object.assign(optionGroupForm, {
+      id: group.id,
+      name: group.name,
+      description: group.description ?? "",
+      options:
+        group.options.length > 0
+          ? group.options.map((option) => ({
+              clientKey: createOptionClientKey(),
+              id: option.id,
+              optionNo: option.optionNo,
+              sortOrder: option.sortOrder,
+              label: option.label
+            }))
+          : defaultOptionRows()
+    } satisfies SaveOptionGroupPayload);
+    syncOptionOrdering();
+  }
+
+  /**
+   * 選択肢グループを保存し、空フォームへ戻します。
+   */
+  async function submitOptionGroup() {
+    await store.saveOptionGroup({
+      ...optionGroupForm,
+      // 空ラベルは保存対象から除外し、バックエンドへ不要な項目を送らないようにします。
+      options: optionGroupForm.options
+        .filter((option) => option.label.trim())
+        .map(({ clientKey: _clientKey, ...option }) => option)
+    });
+
+    resetOptionGroupForm();
+  }
+
+  /**
+   * レコードフォームを保存します。
+   */
+  async function submitRecord() {
+    if (!store.selectedTableId) {
+      return false;
+    }
+
+    const missingColumns =
+      store.currentTable?.columns.filter(
+        (column) =>
+          column.columnName !== "id" &&
+          column.isRequired &&
+          isRequiredValueEmpty(recordValues.value[column.columnName])
+      ) ?? [];
+    if (missingColumns.length > 0) {
+      return false;
+    }
+
+    const payload: SaveRecordPayload = {
+      tableId: store.selectedTableId,
+      recordId: editingRecordId.value,
+      values: recordValues.value
+    };
+
+    await store.saveRecord(payload);
+    resetRecordForm();
+    return true;
+  }
+
+  /**
+   * 指定レコードを削除し、編集中状態も解除します。
+   *
+   * @param recordId 削除対象レコードID
+   */
+  async function deleteRecord(recordId: number) {
+    if (!store.selectedTableId) {
+      return;
+    }
+
+    await store.deleteRecord({
+      tableId: store.selectedTableId,
+      recordId
+    });
+    resetRecordForm();
+  }
+
+  async function deleteTable(tableId: number) {
+    await store.deleteTable({ tableId });
+    resetRecordForm();
+  }
+
+  onMounted(() => {
+    // 初回表示時に必要な初期データを読み込みます。
+    void store.initialize();
+  });
+
+  return {
+    addOptionRow,
+    columnForm,
+    deleteColumn,
+    deleteRecord,
+    deleteTable,
+    editingRecordId,
+    fieldTypes,
+    fieldTypeLabel,
+    fieldTypeMeta,
+    inputType,
+    optionGroupForm,
+    recordValues,
+    referenceChoices,
+    reorderColumns,
+    removeOptionRow,
+    resetOptionGroupForm,
+    resetRecordForm,
+    selectedTable,
+    selectedOptionGroupId,
+    startEditOptionGroup,
+    startEditRecord,
+    store,
+    submitColumn,
+    submitOptionGroup,
+    submitRecord,
+    submitTable,
+    syncOptionOrdering,
+    tableForm,
+    updateColumn,
+    updateLabelColumn
+  };
+}
