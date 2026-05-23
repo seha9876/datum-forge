@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import { useConfirmDialog } from "../../../composables/useConfirmDialog";
+
 import type {
   AppColumn,
   TableDetail,
@@ -461,7 +463,7 @@ watch(isBindingEditorVisible, (visible) => {
       )
         ? selectedBindingCardId.value
         : (bindableTemplateLayouts.value[0]?.cardId ?? null);
-    fitViewportToContent();
+    // 注意: 拡大率の自動変更はユーザーの意図しない動作となるため行わない
     return;
   }
 
@@ -613,6 +615,16 @@ function clearTemplatePreview() {
   emit("clear-template-preview");
 }
 
+/** 紐付けドラフトが元の値から変更されているかを判定します。 */
+const hasUnsavedBindingChanges = computed(() => {
+  if (!isBindingEditorVisible.value) return false;
+  return draftLayouts.value.some(
+    (layout) => bindingDraft.value[layout.cardId] !== layout.columnId
+  );
+});
+
+const confirmDialog = useConfirmDialog();
+
 function openBindingEditor() {
   resetBindingDraft();
   isBindingEditorOpen.value = true;
@@ -621,6 +633,31 @@ function openBindingEditor() {
 function closeBindingEditor() {
   isBindingEditorOpen.value = false;
   selectedBindingCardId.value = null;
+}
+
+/**
+ * 紐付け設定パネルの開閉をトグルします。
+ * 未保存の変更がある場合は破棄確認ダイアログを表示します。
+ */
+async function toggleBindingEditor() {
+  // パネルが開いている場合は閉じる動作
+  if (isBindingEditorOpen.value) {
+    if (hasUnsavedBindingChanges.value) {
+      const confirmed = await confirmDialog.open({
+        title: "紐付けの変更を破棄",
+        message:
+          "紐付けの変更が保存されていません。変更を破棄して閉じますか？",
+        confirmText: "破棄して閉じる",
+        color: "warning"
+      });
+      if (!confirmed) return;
+    }
+    closeBindingEditor();
+    return;
+  }
+
+  // パネルが閉じている場合は開く動作
+  openBindingEditor();
 }
 
 function selectBindingCard(cardId: number) {
@@ -1631,12 +1668,12 @@ function layoutToTemplateCard(
           "
           prepend-icon="mdi-card-bulleted-settings-outline"
           color="primary"
-          variant="tonal"
+          :variant="isBindingEditorVisible ? 'flat' : 'tonal'"
           size="small"
           :disabled="hasUnboundTemplateForTable"
-          @click="openBindingEditor"
+          @click="toggleBindingEditor"
         >
-          表示項目
+          紐付け設定
         </v-btn>
         <v-btn
           v-if="isTemplateMode"
