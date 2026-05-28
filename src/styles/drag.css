@@ -14,15 +14,16 @@
   cursor: grabbing;
 }
 
-.manual-tree-drop-before,
-.manual-tree-drop-after {
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-before),
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-after) {
   position: relative;
 }
 
-.manual-tree-drop-before::before,
-.manual-tree-drop-after::after {
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-before)::before,
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-after)::after {
   content: "";
   position: absolute;
+  z-index: 2;
   left: 0;
   right: 0;
   height: 2px;
@@ -32,11 +33,11 @@
   pointer-events: none;
 }
 
-.manual-tree-drop-before::before {
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-before)::before {
   top: 0;
 }
 
-.manual-tree-drop-after::after {
+.v-list-item:has([data-manual-record-item-id].manual-tree-drop-after)::after {
   bottom: 0;
 }
 

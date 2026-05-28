@@ -677,7 +677,7 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
     scheduleDragPreviewPosition();
   }
 
-  // マウス直下が有効な挿入先なら、対象レコード名の上端/下端へ線を出します。
+  // マウス直下が有効な挿入先なら、対象レコード行の上端/下端へ線を出します。
   const dropTarget = getRecordDropTarget(event);
   dropIndicator.value = dropTarget
     ? {
