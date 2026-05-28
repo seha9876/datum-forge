@@ -19,12 +19,13 @@ use database::{
     ListViewLayoutCardColumnBindingsPayload, ListViewLayoutTemplatesForFolderPayload, RecordTag,
     RecordTagBundle, RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice,
     RemoveViewNavFolderRecordPayload, RenameViewLayoutTemplatePayload, ReorderColumnsPayload,
-    ResetViewLayoutCardOverridePayload, ResetViewLayoutCardOverridesPayload,
-    ResolvedViewFieldLayout, SaveOptionGroupPayload, SaveRecordPayload, SaveRecordTagGroupPayload,
-    SaveRecordTagPayload, SaveViewLayoutCardColumnBindingsPayload,
-    SaveViewLayoutCardOverridesPayload, SaveViewLayoutTemplateCardsPayload, StartupDbStatus,
-    TableDetail, UpdateColumnPayload, UpdateLabelColumnPayload, ViewLayoutCardColumnBinding,
-    ViewLayoutTemplate, ViewLayoutTemplateCard, ViewNavFolderRecord, ViewNavNode, ViewTableSection,
+    ReorderViewNavFolderRecordsPayload, ResetViewLayoutCardOverridePayload,
+    ResetViewLayoutCardOverridesPayload, ResolvedViewFieldLayout, SaveOptionGroupPayload,
+    SaveRecordPayload, SaveRecordTagGroupPayload, SaveRecordTagPayload,
+    SaveViewLayoutCardColumnBindingsPayload, SaveViewLayoutCardOverridesPayload,
+    SaveViewLayoutTemplateCardsPayload, StartupDbStatus, TableDetail, UpdateColumnPayload,
+    UpdateLabelColumnPayload, ViewLayoutCardColumnBinding, ViewLayoutTemplate,
+    ViewLayoutTemplateCard, ViewNavFolderRecord, ViewNavNode, ViewTableSection,
 };
 use tauri::State;
 
@@ -419,6 +420,21 @@ fn remove_view_nav_folder_record(
         .as_ref()
         .ok_or_else(db_not_ready_error)?
         .remove_view_nav_folder_record(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reorder_view_nav_folder_records(
+    state: State<'_, AppState>,
+    payload: ReorderViewNavFolderRecordsPayload,
+) -> Result<Vec<ViewNavFolderRecord>, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .reorder_view_nav_folder_records(payload)
         .map_err(|e| e.to_string())
 }
 
@@ -862,6 +878,7 @@ pub fn run() {
             list_view_nav_folder_records,
             add_view_nav_folder_records,
             remove_view_nav_folder_record,
+            reorder_view_nav_folder_records,
             get_view_table_sections,
             list_all_folder_layout_templates,
             list_view_layout_templates_for_folder,

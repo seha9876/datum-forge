@@ -24,6 +24,10 @@ defineProps<{
     name: string
   ) => Promise<void>;
   onRenameLayoutTemplate: (templateId: number, name: string) => Promise<void>;
+  onReorderFolderRecords: (
+    folderId: number,
+    records: ViewNavFolderRecord[]
+  ) => Promise<void>;
   onSelectFolder: (node: ViewNavTreeNode) => void;
   onSelectFolderRecord: (record: ViewNavFolderRecord) => void;
   onSelectLayoutTemplate: (template: ViewLayoutTemplate) => void;
@@ -139,6 +143,7 @@ const activeTab = ref<"navigation" | "templates">("navigation");
       :is-folder-expanded="isFolderExpanded"
       :on-create-folder="onCreateFolder"
       :on-delete-folder="onDeleteFolder"
+      :on-reorder-folder-records="onReorderFolderRecords"
       :on-select-folder-record="onSelectFolderRecord"
       :on-select-folder="onSelectFolder"
       :on-toggle-folder="onToggleFolder"

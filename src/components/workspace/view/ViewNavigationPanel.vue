@@ -14,6 +14,10 @@ defineProps<{
   isFolderExpanded: (folderId: number) => boolean;
   onCreateFolder: (parentId: number | null, name: string) => Promise<void>;
   onDeleteFolder: (node: ViewNavTreeNode) => Promise<void>;
+  onReorderFolderRecords: (
+    folderId: number,
+    records: ViewNavFolderRecord[]
+  ) => Promise<void>;
   onSelectFolder: (node: ViewNavTreeNode) => void;
   onSelectFolderRecord: (record: ViewNavFolderRecord) => void;
   onToggleFolder: (folderId: number) => void;
@@ -54,6 +58,7 @@ const navigationSearchQuery = ref("");
         :nodes="customTree"
         :on-create-folder="onCreateFolder"
         :on-delete-folder="onDeleteFolder"
+        :on-reorder-folder-records="onReorderFolderRecords"
         :on-select-folder-record="onSelectFolderRecord"
         :on-select-folder="onSelectFolder"
         :on-toggle-folder="onToggleFolder"
