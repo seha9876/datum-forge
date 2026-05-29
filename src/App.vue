@@ -1,4 +1,5 @@
 ﻿<script setup lang="ts">
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import ConfirmDialog from "./components/ConfirmDialog.vue";
@@ -149,6 +150,8 @@ provideConfirmDialog(confirmDialog);
 
 /** サイドバーを省スペース表示するかどうかを表します。 */
 const isSidebarRail = ref(false);
+/** カスタムタイトルバーの最大化/復元アイコンを切り替えるための状態です。 */
+const isWindowMaximized = ref(false);
 /** ドラッグで調整するサイドバー幅です。 */
 const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH);
 /** レール解除時に復元する通常幅です。 */
@@ -222,6 +225,60 @@ function toggleSidebar() {
 
   lastExpandedSidebarWidth.value = sidebarWidth.value;
   isSidebarRail.value = true;
+}
+
+function getAppWindow() {
+  return getCurrentWindow();
+}
+
+function shouldIgnoreWindowDrag(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return !!target.closest(
+    "button, a, input, textarea, select, [role='button'], .app-window-no-drag"
+  );
+}
+
+/**
+ * カスタムタイトルバーの空白をドラッグしたときだけウィンドウ移動を開始します。
+ */
+async function startWindowDrag(event: PointerEvent) {
+  if (
+    event.button !== 0 ||
+    event.detail > 1 ||
+    shouldIgnoreWindowDrag(event.target)
+  ) {
+    return;
+  }
+
+  await getAppWindow().startDragging();
+}
+
+async function toggleMaximizeFromTitlebar(event: MouseEvent) {
+  if (shouldIgnoreWindowDrag(event.target)) {
+    return;
+  }
+
+  await toggleMaximizeWindow();
+}
+
+async function refreshWindowMaximizedState() {
+  isWindowMaximized.value = await getAppWindow().isMaximized();
+}
+
+async function minimizeWindow() {
+  await getAppWindow().minimize();
+}
+
+async function toggleMaximizeWindow() {
+  await getAppWindow().toggleMaximize();
+  await refreshWindowMaximizedState();
+}
+
+async function closeWindow() {
+  await getAppWindow().close();
 }
 
 /**
@@ -328,11 +385,99 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   void refreshTags();
+  void refreshWindowMaximizedState();
 });
 </script>
 
 <template>
   <v-app class="app-root">
+    <div
+      class="app-window-titlebar"
+      @pointerdown="startWindowDrag"
+      @dblclick="toggleMaximizeFromTitlebar"
+    >
+      <img
+        class="app-window-icon"
+        src="/app-icon.png"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+      />
+
+      <v-tooltip
+        :text="
+          isSidebarRail ? 'サイドメニューを開く' : 'サイドメニューを閉じる'
+        "
+        location="bottom"
+      >
+        <template #activator="{ props: tooltipProps }">
+          <v-btn
+            v-bind="tooltipProps"
+            class="app-window-no-drag"
+            :icon="isSidebarRail ? 'mdi-menu-open' : 'mdi-menu'"
+            variant="text"
+            size="small"
+            :disabled="
+              currentMode === 'settings' ||
+              isDatabaseSetupRequired ||
+              isCheckingDatabase
+            "
+            :aria-label="
+              isSidebarRail ? 'サイドメニューを開く' : 'サイドメニューを閉じる'
+            "
+            @click="toggleSidebar"
+          />
+        </template>
+      </v-tooltip>
+
+      <nav class="app-window-menu-items" aria-label="アプリケーションメニュー">
+        <v-btn class="app-window-no-drag" variant="text" size="small">
+          ファイル
+        </v-btn>
+        <v-btn class="app-window-no-drag" variant="text" size="small">
+          編集
+        </v-btn>
+        <v-btn class="app-window-no-drag" variant="text" size="small">
+          表示
+        </v-btn>
+        <v-btn class="app-window-no-drag" variant="text" size="small">
+          ウィンドウ
+        </v-btn>
+        <v-btn class="app-window-no-drag" variant="text" size="small">
+          ヘルプ
+        </v-btn>
+      </nav>
+
+      <div class="app-window-drag-spacer" aria-hidden="true" />
+
+      <div class="app-window-controls" aria-label="ウィンドウ操作">
+        <v-btn
+          class="app-window-control app-window-no-drag"
+          icon="mdi-window-minimize"
+          variant="text"
+          size="small"
+          aria-label="最小化"
+          @click="minimizeWindow"
+        />
+        <v-btn
+          class="app-window-control app-window-no-drag"
+          :icon="isWindowMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'"
+          variant="text"
+          size="small"
+          :aria-label="isWindowMaximized ? '元のサイズに戻す' : '最大化'"
+          @click="toggleMaximizeWindow"
+        />
+        <v-btn
+          class="app-window-control app-window-close app-window-no-drag"
+          icon="mdi-window-close"
+          variant="text"
+          size="small"
+          aria-label="閉じる"
+          @click="closeWindow"
+        />
+      </div>
+    </div>
+
     <DatabaseSetupPage v-if="isDatabaseSetupRequired" />
 
     <main v-else-if="isCheckingDatabase" class="database-setup-page">
@@ -342,7 +487,8 @@ onMounted(() => {
       </section>
     </main>
 
-    <v-layout v-else class="app-layout">
+    <template v-else>
+      <v-layout class="app-layout">
       <!-- テーブル一覧と画面遷移の起点になるサイドバー領域です。 -->
       <v-navigation-drawer
         v-if="currentMode !== 'settings'"
@@ -368,7 +514,6 @@ onMounted(() => {
             :on-select-folder-record="selectFolderRecord"
             :on-select-folder="selectFolder"
             :on-select-layout-template="selectLayoutTemplate"
-            :on-toggle-sidebar="toggleSidebar"
             :on-toggle-folder="toggleFolder"
             :layout-templates="layoutTemplates"
             :rail="isSidebarRail"
@@ -382,7 +527,6 @@ onMounted(() => {
             v-else-if="currentMode === 'master'"
             v-model:selected-section="selectedMasterSection"
             :rail="isSidebarRail"
-            :on-toggle-sidebar="toggleSidebar"
           />
           <TableSidebar
             v-else
@@ -392,7 +536,6 @@ onMounted(() => {
             :on-delete-table="deleteTable"
             :on-load-table="store.loadTable"
             :on-open-create-dialog="openTableDialog"
-            :on-toggle-sidebar="toggleSidebar"
           />
         </div>
         <v-tooltip text="左サイドバーの幅を調整" location="right">
@@ -512,7 +655,8 @@ onMounted(() => {
           </div>
         </div>
       </v-main>
-    </v-layout>
+      </v-layout>
+    </template>
 
     <!-- 新規テーブル作成用のモーダルダイアログです。 -->
     <TableCreateDialog

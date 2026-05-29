@@ -67,7 +67,7 @@ body.is-resizing-sidebar .app-drawer-resize-handle::before {
 
 .app-main {
   min-width: 0;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -115,10 +115,6 @@ body.is-resizing-sidebar .app-drawer-resize-handle::before {
 
 .sidebar-list-card {
   padding: 0.25rem;
-}
-
-.sidebar-collapse-btn {
-  flex-shrink: 0;
 }
 
 .sidebar-section-title {
@@ -235,6 +231,10 @@ body.is-resizing-sidebar .app-drawer-resize-handle::before {
   min-height: 0;
 }
 
+.sidebar-rail-shell.no-actions {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .sidebar-rail-actions {
   display: grid;
   grid-auto-rows: min-content;
@@ -248,35 +248,4 @@ body.is-resizing-sidebar .app-drawer-resize-handle::before {
 
 .sidebar-rail-actions > * {
   justify-self: center;
-}
-
-.sidebar-rail-toggle {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 16px;
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-  cursor: pointer;
-  transition:
-    background-color 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease;
-}
-
-.sidebar-rail-toggle:hover,
-.sidebar-rail-toggle:focus-visible {
-  background: rgba(var(--v-theme-primary), 0.18);
-  box-shadow: 0 0 0 1px rgba(var(--v-theme-primary), 0.22);
-  outline: none;
-}
-
-.sidebar-rail-toggle-glyph {
-  font-size: 1.45rem;
-  font-weight: 700;
-  line-height: 1;
 }

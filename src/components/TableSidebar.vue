@@ -4,8 +4,6 @@ import { useConfirmDialog } from "../composables/useConfirmDialog";
 import type { AppBootstrap, AppTableSummary } from "../types";
 
 const LABELS = {
-  openSidebar: "サイドメニューを開く",
-  closeSidebar: "サイドメニューを閉じる",
   createTable: "テーブルを作成",
   tableList: "テーブル一覧",
   createNew: "新規作成",
@@ -14,8 +12,6 @@ const LABELS = {
   deleteTable: "削除"
 } as const;
 
-const RAIL_TOGGLE_GLYPH = "›";
-
 const props = defineProps<{
   bootstrap: AppBootstrap | null;
   rail: boolean;
@@ -23,7 +19,6 @@ const props = defineProps<{
   onDeleteTable: (tableId: number) => Promise<void>;
   onLoadTable: (tableId: number) => Promise<void>;
   onOpenCreateDialog: () => void;
-  onToggleSidebar: () => void;
 }>();
 
 const confirmDialog = useConfirmDialog();
@@ -56,21 +51,6 @@ async function handleDeleteTable(table: AppTableSummary) {
     <template v-if="rail">
       <div class="sidebar-rail-shell">
         <div class="sidebar-rail-actions">
-          <v-tooltip :text="LABELS.openSidebar" location="right">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                class="sidebar-rail-toggle"
-                :aria-label="LABELS.openSidebar"
-                @click="onToggleSidebar"
-              >
-                <span class="sidebar-rail-toggle-glyph" aria-hidden="true">
-                  {{ RAIL_TOGGLE_GLYPH }}
-                </span>
-              </button>
-            </template>
-          </v-tooltip>
           <v-tooltip :text="LABELS.createTable" location="right">
             <template #activator="{ props: tooltipProps }">
               <v-btn
@@ -139,19 +119,6 @@ async function handleDeleteTable(table: AppTableSummary) {
               >
                 {{ props.bootstrap?.tables.length ?? 0 }}
               </v-chip>
-              <v-tooltip :text="LABELS.closeSidebar" location="bottom">
-                <template #activator="{ props: tooltipProps }">
-                  <v-btn
-                    v-bind="tooltipProps"
-                    icon="mdi-chevron-left"
-                    variant="text"
-                    size="small"
-                    class="sidebar-collapse-btn"
-                    :aria-label="LABELS.closeSidebar"
-                    @click="onToggleSidebar"
-                  />
-                </template>
-              </v-tooltip>
             </div>
           </div>
 

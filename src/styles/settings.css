@@ -169,7 +169,7 @@
 .database-setup-page {
   display: grid;
   place-items: center;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--app-window-titlebar-height, 0px));
   padding: 1.5rem;
   overflow-y: auto;
 }

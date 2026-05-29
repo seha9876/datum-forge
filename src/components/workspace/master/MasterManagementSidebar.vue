@@ -9,13 +9,9 @@ interface MasterSectionItem {
 }
 
 const LABELS = {
-  openSidebar: "サイドメニューを開く",
-  closeSidebar: "サイドメニューを閉じる",
   title: "マスタ管理",
   sectionList: "管理項目"
 } as const;
-
-const RAIL_TOGGLE_GLYPH = "›";
 
 const sections: MasterSectionItem[] = [
   {
@@ -35,7 +31,6 @@ const sections: MasterSectionItem[] = [
 defineProps<{
   rail: boolean;
   selectedSection: MasterSection;
-  onToggleSidebar: () => void;
 }>();
 
 const emit = defineEmits<{
@@ -46,25 +41,7 @@ const emit = defineEmits<{
 <template>
   <div class="sidebar-content" :class="{ rail }">
     <template v-if="rail">
-      <div class="sidebar-rail-shell">
-        <div class="sidebar-rail-actions">
-          <v-tooltip :text="LABELS.openSidebar" location="right">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                class="sidebar-rail-toggle"
-                :aria-label="LABELS.openSidebar"
-                @click="onToggleSidebar"
-              >
-                <span class="sidebar-rail-toggle-glyph" aria-hidden="true">
-                  {{ RAIL_TOGGLE_GLYPH }}
-                </span>
-              </button>
-            </template>
-          </v-tooltip>
-        </div>
-
+      <div class="sidebar-rail-shell no-actions">
         <div class="sidebar-scroll-section rail">
           <v-list
             class="sidebar-list sidebar-list-rail"
@@ -114,19 +91,6 @@ const emit = defineEmits<{
               >
                 {{ sections.length }}
               </v-chip>
-              <v-tooltip :text="LABELS.closeSidebar" location="bottom">
-                <template #activator="{ props: tooltipProps }">
-                  <v-btn
-                    v-bind="tooltipProps"
-                    icon="mdi-chevron-left"
-                    variant="text"
-                    size="small"
-                    class="sidebar-collapse-btn"
-                    :aria-label="LABELS.closeSidebar"
-                    @click="onToggleSidebar"
-                  />
-                </template>
-              </v-tooltip>
             </div>
           </div>
 

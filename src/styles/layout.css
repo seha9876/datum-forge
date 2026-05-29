@@ -88,15 +88,7 @@
 
 .view-nav-sidebar-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.35rem;
-}
-
-.view-nav-collapse-btn {
-  position: static !important;
-  flex: 0 0 auto;
-  z-index: 1;
 }
 
 .view-sidebar-panel {
@@ -669,8 +661,72 @@
     justify-content: flex-start;
   }
 }
+:root {
+  --app-window-titlebar-height: 36px;
+}
+
+.app-window-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--app-window-titlebar-height);
+  min-height: var(--app-window-titlebar-height);
+  padding: 0 0 0 0.55rem;
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.12);
+  background: rgb(var(--v-theme-surface));
+  user-select: none;
+}
+
+.app-window-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-right: 0.25rem;
+  -webkit-user-drag: none;
+}
+
+.app-window-menu-items {
+  display: flex;
+  align-items: center;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.app-window-menu-items .v-btn {
+  min-width: 0;
+  padding-inline: 0.65rem;
+  letter-spacing: 0;
+}
+
+.app-window-drag-spacer {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 1rem;
+}
+
+.app-window-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+
+.app-window-control.v-btn {
+  width: 46px;
+  height: 100%;
+  min-width: 46px;
+  border-radius: 0;
+}
+
+.app-window-close:hover,
+.app-window-close:focus-visible {
+  background: rgb(var(--v-theme-error)) !important;
+  color: rgb(var(--v-theme-on-error)) !important;
+}
+
 .app-layout {
-  min-height: 100vh;
+  height: calc(100vh - var(--app-window-titlebar-height));
+  min-height: 0;
 }
 
 .topbar-shell {

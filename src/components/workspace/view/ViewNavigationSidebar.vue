@@ -31,7 +31,6 @@ defineProps<{
   onSelectFolder: (node: ViewNavTreeNode) => void;
   onSelectFolderRecord: (record: ViewNavFolderRecord) => void;
   onSelectLayoutTemplate: (template: ViewLayoutTemplate) => void;
-  onToggleSidebar: () => void;
   onToggleFolder: (folderId: number) => void;
   rail: boolean;
   selectedLayoutTemplateId: number | null;
@@ -40,8 +39,6 @@ defineProps<{
 }>();
 
 const activeTab = ref<"navigation" | "templates">("navigation");
-
-const RAIL_TOGGLE_GLYPH = "›";
 </script>
 
 <template>
@@ -50,25 +47,7 @@ const RAIL_TOGGLE_GLYPH = "›";
     class="sidebar-content rail"
     aria-label="閲覧モードサイドバー"
   >
-    <div class="sidebar-rail-shell">
-      <div class="sidebar-rail-actions">
-        <v-tooltip text="サイドバーを開く" location="right">
-          <template #activator="{ props: tooltipProps }">
-            <button
-              v-bind="tooltipProps"
-              type="button"
-              class="sidebar-rail-toggle"
-              aria-label="サイドバーを開く"
-              @click="onToggleSidebar"
-            >
-              <span class="sidebar-rail-toggle-glyph" aria-hidden="true">
-                {{ RAIL_TOGGLE_GLYPH }}
-              </span>
-            </button>
-          </template>
-        </v-tooltip>
-      </div>
-
+    <div class="sidebar-rail-shell no-actions">
       <div class="sidebar-scroll-section rail">
         <v-list
           class="sidebar-list sidebar-list-rail"
@@ -145,20 +124,6 @@ const RAIL_TOGGLE_GLYPH = "›";
           </template>
         </v-tooltip>
       </v-btn-toggle>
-
-      <v-tooltip text="サイドバーを閉じる" location="bottom">
-        <template #activator="{ props: tooltipProps }">
-          <v-btn
-            v-bind="tooltipProps"
-            icon="mdi-chevron-left"
-            variant="text"
-            size="small"
-            class="sidebar-collapse-btn view-nav-collapse-btn"
-            aria-label="サイドバーを閉じる"
-            @click="onToggleSidebar"
-          />
-        </template>
-      </v-tooltip>
     </div>
 
     <ViewNavigationPanel
