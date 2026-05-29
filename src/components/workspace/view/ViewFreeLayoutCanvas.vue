@@ -2065,9 +2065,6 @@ function layoutToTemplateCard(
           >
             <div>
               <strong>{{ cardBindingLabel(layout, index) }}</strong>
-              <span>
-                {{ columnDisplayName(bindingDraft[layout.cardId] ?? null) }}
-              </span>
             </div>
             <v-select
               :items="bindingColumnItems"

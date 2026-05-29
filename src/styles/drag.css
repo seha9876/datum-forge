@@ -458,10 +458,12 @@
 
 .view-binding-card {
   display: grid;
-  gap: 0.45rem;
+  grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
   min-height: unset;
   overflow: visible;
-  padding: 0.62rem 0.7rem;
+  padding: 0.45rem 0.65rem;
   border-color: rgba(var(--v-theme-outline), 0.2);
   text-align: left;
   cursor: pointer;
@@ -476,15 +478,16 @@
 .view-binding-card > div {
   display: grid;
   gap: 0.08rem;
+  min-width: 0;
 }
 
 .view-binding-card strong {
   color: rgb(var(--v-theme-on-surface));
+  white-space: nowrap;
 }
 
-.view-binding-card span {
-  color: rgb(var(--v-theme-on-surface-variant));
-  font-size: 0.85rem;
+.view-binding-card .v-input {
+  min-width: 0;
 }
 
 .view-binding-actions {
