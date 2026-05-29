@@ -214,7 +214,8 @@ const isCheckingDatabase = computed(
 );
 
 /**
- * サイドバーの展開・折りたたみ状態を切り替えます。
+ * タイトルバーのボタンからサイドバーの通常幅/レール表示を切り替えます。
+ * レール表示へ閉じる前に現在幅を覚えておき、再度開いたときに同じ幅へ戻します。
  */
 function toggleSidebar() {
   if (isSidebarRail.value) {
@@ -227,10 +228,11 @@ function toggleSidebar() {
   isSidebarRail.value = true;
 }
 
-function getAppWindow() {
-  return getCurrentWindow();
-}
-
+/**
+ * ウィンドウ移動を始めてはいけない操作部品かどうかを判定します。
+ * タイトルバー全体をドラッグ領域にするとボタン操作も奪ってしまうため、
+ * ボタンや入力欄などは明示的にドラッグ対象から外します。
+ */
 function shouldIgnoreWindowDrag(target: EventTarget | null) {
   if (!(target instanceof Element)) {
     return false;
@@ -253,9 +255,12 @@ async function startWindowDrag(event: PointerEvent) {
     return;
   }
 
-  await getAppWindow().startDragging();
+  await getCurrentWindow().startDragging();
 }
 
+/**
+ * 通常のWindowsタイトルバーに近づけるため、空白のダブルクリックで最大化/復元します。
+ */
 async function toggleMaximizeFromTitlebar(event: MouseEvent) {
   if (shouldIgnoreWindowDrag(event.target)) {
     return;
@@ -264,25 +269,31 @@ async function toggleMaximizeFromTitlebar(event: MouseEvent) {
   await toggleMaximizeWindow();
 }
 
+/**
+ * 最大化状態を読み直し、最大化/復元ボタンのアイコンを現在状態に合わせます。
+ */
 async function refreshWindowMaximizedState() {
-  isWindowMaximized.value = await getAppWindow().isMaximized();
+  isWindowMaximized.value = await getCurrentWindow().isMaximized();
 }
 
+/** ウィンドウ右端の最小化ボタンからTauriの最小化APIを呼びます。 */
 async function minimizeWindow() {
-  await getAppWindow().minimize();
+  await getCurrentWindow().minimize();
 }
 
+/** 最大化/復元を切り替え、切り替え後の状態をアイコンへ反映します。 */
 async function toggleMaximizeWindow() {
-  await getAppWindow().toggleMaximize();
+  await getCurrentWindow().toggleMaximize();
   await refreshWindowMaximizedState();
 }
 
+/** 標準タイトルバーを消しているため、閉じる操作もVue側からTauri APIへ渡します。 */
 async function closeWindow() {
-  await getAppWindow().close();
+  await getCurrentWindow().close();
 }
 
 /**
- * サイドバー幅のドラッグ調整を開始します。
+ * サイドバー右端の細いバーを掴んだ時点の幅とポインター位置を記録します。
  */
 function startSidebarResize(event: globalThis.MouseEvent) {
   sidebarResizeStartWidth.value = isSidebarRail.value
@@ -296,6 +307,7 @@ function startSidebarResize(event: globalThis.MouseEvent) {
 
 /**
  * ドラッグ量に応じてサイドバー幅を更新します。
+ * 一定幅より狭くなった場合は、通常幅ではなくレール表示へ切り替えます。
  */
 function handleSidebarResize(event: globalThis.MouseEvent) {
   const nextWidth =
@@ -315,7 +327,7 @@ function handleSidebarResize(event: globalThis.MouseEvent) {
 }
 
 /**
- * サイドバー幅調整を終了します。
+ * 幅調整中だけ登録したグローバルイベントを外し、通常カーソルに戻します。
  */
 function stopSidebarResize() {
   window.removeEventListener("mousemove", handleSidebarResize);
@@ -341,10 +353,12 @@ function openModeHelp() {
   isModeHelpOpen.value = true;
 }
 
+/** 設定画面を閉じ、設定を開く前に表示していた通常モードへ戻ります。 */
 function closeSettingsPage() {
   currentMode.value = previousNormalMode.value;
 }
 
+/** 右上の歯車から設定画面を開閉し、戻り先の通常モードを保持します。 */
 function toggleSettingsPage() {
   if (currentMode.value === "settings") {
     closeSettingsPage();

@@ -665,6 +665,7 @@
   --app-window-titlebar-height: 36px;
 }
 
+/* Tauriの標準タイトルバーを消しているため、ここがウィンドウ最上部になります。 */
 .app-window-titlebar {
   display: flex;
   align-items: center;
@@ -677,6 +678,7 @@
   user-select: none;
 }
 
+/* アプリ識別用の小さなアイコンです。ドラッグ中に画像だけ掴まないよう抑止します。 */
 .app-window-icon {
   width: 18px;
   height: 18px;
@@ -685,6 +687,7 @@
   -webkit-user-drag: none;
 }
 
+/* メニュー項目は今後の拡張用です。現時点ではボタンとして見せるだけにしています。 */
 .app-window-menu-items {
   display: flex;
   align-items: center;
@@ -698,12 +701,14 @@
   letter-spacing: 0;
 }
 
+/* タイトルバーの空白部分です。ここを掴むとウィンドウを移動できます。 */
 .app-window-drag-spacer {
   align-self: stretch;
   flex: 1 1 auto;
   min-width: 1rem;
 }
 
+/* 標準タイトルバーの代わりに、右端へウィンドウ操作ボタンを並べます。 */
 .app-window-controls {
   display: flex;
   align-items: stretch;
@@ -711,6 +716,7 @@
   flex: 0 0 auto;
 }
 
+/* OS標準ボタンに近い押しやすさを保つため、通常ボタンより横幅を広めに固定します。 */
 .app-window-control.v-btn {
   width: 46px;
   height: 100%;
@@ -718,6 +724,7 @@
   border-radius: 0;
 }
 
+/* 閉じるボタンだけは危険操作として、hover時にエラー色で目立たせます。 */
 .app-window-close:hover,
 .app-window-close:focus-visible {
   background: rgb(var(--v-theme-error)) !important;

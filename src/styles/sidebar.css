@@ -231,10 +231,12 @@ body.is-resizing-sidebar .app-drawer-resize-handle::before {
   min-height: 0;
 }
 
+/* 作成ボタンなど上段アクションがないrailでは、一覧だけで全高を使います。 */
 .sidebar-rail-shell.no-actions {
   grid-template-rows: minmax(0, 1fr);
 }
 
+/* テーブル一覧railだけは、先頭に「テーブル作成」ボタンを持ちます。 */
 .sidebar-rail-actions {
   display: grid;
   grid-auto-rows: min-content;
