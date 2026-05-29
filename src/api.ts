@@ -13,7 +13,6 @@ import type {
   AttachRecordTagPayload,
   CreateAndAttachRecordTagPayload,
   CreateViewLayoutTemplatePayload,
-  DeleteRecordTagGroupPayload,
   DeleteRecordTagPayload,
   DeleteColumnPayload,
   DeleteRecordPayload,
@@ -263,8 +262,6 @@ export const api = {
     invoke<RecordTag[]>("list_record_tags_for_record", { tableId, recordId }),
   saveRecordTagGroup: (payload: SaveRecordTagGroupPayload) =>
     invoke<RecordTagGroup>("save_record_tag_group", { payload }),
-  deleteRecordTagGroup: (payload: DeleteRecordTagGroupPayload) =>
-    invoke<void>("delete_record_tag_group", { payload }),
   saveRecordTag: (payload: SaveRecordTagPayload) =>
     invoke<RecordTag>("save_record_tag", { payload }),
   deleteRecordTag: (payload: DeleteRecordTagPayload) =>

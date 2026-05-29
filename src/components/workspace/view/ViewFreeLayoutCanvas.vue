@@ -957,19 +957,8 @@ function applyNumberStyleFromInput(key: LayoutStyleKey, event: unknown) {
   applySelectedStyle(key, value);
 }
 
-function _applyFontWeightFromInput(event: unknown) {
-  applySelectedStyle(
-    "fontWeight",
-    inputTarget(event)?.checked ? "bold" : "normal"
-  );
-}
-
 function applyFontWeightFromCheckbox(value: boolean | null) {
   applySelectedStyle("fontWeight", value ? "bold" : "normal");
-}
-
-function _applyShowLabelFromInput(event: unknown) {
-  applySelectedStyle("showLabel", inputTarget(event)?.checked ?? true);
 }
 
 function applyShowLabelFromCheckbox(value: boolean | null) {

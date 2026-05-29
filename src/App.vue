@@ -10,6 +10,7 @@ import TableCreateDialog from "./components/TableCreateDialog.vue";
 import TableSidebar from "./components/TableSidebar.vue";
 import MasterManagementSidebar from "./components/workspace/master/MasterManagementSidebar.vue";
 import ViewNavigationSidebar from "./components/workspace/view/ViewNavigationSidebar.vue";
+import WorkspaceModeTabs from "./components/workspace/WorkspaceModeTabs.vue";
 import WorkspaceHeader from "./components/WorkspaceHeader.vue";
 import WorkspaceModeHelpDialog from "./components/WorkspaceModeHelpDialog.vue";
 import {
@@ -133,7 +134,6 @@ const {
   clearRecordTags,
   createAndAttachTag,
   deleteTag,
-  deleteTagGroup,
   detachTag,
   detachTagGroup,
   groups: recordTagGroups,
@@ -445,22 +445,27 @@ onMounted(() => {
       </v-tooltip>
 
       <nav class="app-window-menu-items" aria-label="アプリケーションメニュー">
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ファイル
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           編集
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           表示
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ウィンドウ
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ヘルプ
         </v-btn>
       </nav>
+
+      <WorkspaceModeTabs
+        v-model="currentMode"
+        class="app-window-mode-tabs app-window-no-drag"
+      />
 
       <div class="app-window-drag-spacer" aria-hidden="true" />
 
@@ -568,9 +573,9 @@ onMounted(() => {
 
       <v-main class="app-main">
         <div class="app-main-frame">
-          <!-- 現在テーブル名とモード切り替えを表示する上部バーです。 -->
+          <!-- 現在の画面名、ヘルプ、設定ボタンを表示する上部バーです。 -->
           <WorkspaceHeader
-            v-model="currentMode"
+            :model-value="currentMode"
             :table-title="workspaceTitle"
             :table-subtitle="workspaceSubtitle"
             :on-open-mode-help="openModeHelp"
@@ -583,7 +588,7 @@ onMounted(() => {
               :on-back="closeSettingsPage"
             />
             <div v-else class="workspace-shell">
-              <!-- 設計・データ・マスタ管理の各ワークスペースを切り替えて表示します。 -->
+              <!-- タイトルバーで選んだモードに合わせて各ワークスペースを表示します。 -->
               <ModeWorkspaceShell
                 :add-option-row="addOptionRow"
                 :bootstrap="store.bootstrap"
@@ -642,7 +647,6 @@ onMounted(() => {
                 :on-submit-record="submitRecord"
                 :on-sync-option-ordering="syncOptionOrdering"
                 :on-save-record-tag-group="saveTagGroup"
-                :on-delete-record-tag-group="deleteTagGroup"
                 :on-save-record-tag="saveTag"
                 :on-delete-record-tag="deleteTag"
                 :on-attach-record-tag-group="attachTagGroup"

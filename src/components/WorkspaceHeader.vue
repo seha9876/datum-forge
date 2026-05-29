@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import WorkspaceModeTabs from "./workspace/WorkspaceModeTabs.vue";
-
 import type { WorkspaceMode } from "../composables/useWorkspaceMode";
 
 defineProps<{
@@ -9,10 +7,6 @@ defineProps<{
   tableSubtitle: string;
   onOpenModeHelp: () => void;
   onOpenSettings: () => void;
-}>();
-
-const emit = defineEmits<{
-  "update:modelValue": [WorkspaceMode];
 }>();
 </script>
 
@@ -31,11 +25,6 @@ const emit = defineEmits<{
           <strong>{{ tableTitle }}</strong>
           <small>{{ tableSubtitle }}</small>
         </div>
-        <WorkspaceModeTabs
-          class="topbar-mode-tabs"
-          :model-value="modelValue"
-          @update:model-value="emit('update:modelValue', $event)"
-        />
       </div>
 
       <div class="topbar-actions">

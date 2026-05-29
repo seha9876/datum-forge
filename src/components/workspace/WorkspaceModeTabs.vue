@@ -1,17 +1,19 @@
 ﻿<script setup lang="ts">
 import type { WorkspaceMode } from "../../composables/useWorkspaceMode";
 
+type WorkspaceTabMode = Exclude<WorkspaceMode, "settings">;
+
 defineProps<{
   modelValue: WorkspaceMode;
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [WorkspaceMode];
+  "update:modelValue": [WorkspaceTabMode];
 }>();
 
-/** タブ描画に使うワークスペースモード定義です。 */
+/** カスタムタイトルバーに表示するワークスペースモード定義です。 */
 const modes: Array<{
-  id: WorkspaceMode;
+  id: WorkspaceTabMode;
   label: string;
   icon: string;
 }> = [
@@ -128,24 +130,17 @@ function handleTabsWheel(event: WheelLikeEvent) {
 </script>
 
 <template>
-  <!-- ワークスペース全体の表示モードを切り替えるタブ群です。 -->
-  <v-card
-    class="mode-tabs-card"
-    color="surface"
-    variant="elevated"
-    border
-    rounded="xl"
-    elevation="2"
-    @wheel="handleTabsWheel"
-  >
+  <!-- カスタムタイトルバー内でワークスペース全体の表示モードを切り替えます。 -->
+  <div class="mode-tabs-titlebar" @wheel="handleTabsWheel">
     <v-tabs
       :model-value="modelValue"
       color="primary"
       align-tabs="start"
-      density="comfortable"
-      @update:model-value="emit('update:modelValue', $event as WorkspaceMode)"
+      density="compact"
+      @update:model-value="
+        emit('update:modelValue', $event as WorkspaceTabMode)
+      "
     >
-      <!-- モード定義に基づいてタブを動的に描画します。 -->
       <v-tab
         v-for="mode in modes"
         :key="mode.id"
@@ -155,5 +150,5 @@ function handleTabsWheel(event: WheelLikeEvent) {
         {{ mode.label }}
       </v-tab>
     </v-tabs>
-  </v-card>
+  </div>
 </template>

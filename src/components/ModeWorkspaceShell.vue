@@ -31,12 +31,13 @@ import type {
 } from "../types";
 
 type MasterSection = "options" | "tags";
+type WorkspaceContentMode = Exclude<WorkspaceMode, "settings">;
 
 defineProps<{
   addOptionRow: () => void;
   bootstrap: AppBootstrap | null;
   columnForm: AddColumnPayload;
-  currentMode: WorkspaceMode;
+  currentMode: WorkspaceContentMode;
   editingRecordId: number | null;
   error: string;
   layoutCardItems: ViewLayoutCardItem[];
@@ -88,7 +89,6 @@ defineProps<{
   onSubmitRecord: () => Promise<boolean>;
   onSyncOptionOrdering: () => void;
   onSaveRecordTagGroup: (payload: SaveRecordTagGroupPayload) => Promise<void>;
-  onDeleteRecordTagGroup: (groupId: number) => Promise<void>;
   onSaveRecordTag: (payload: SaveRecordTagPayload) => Promise<void>;
   onDeleteRecordTag: (tagId: number) => Promise<void>;
   onAttachRecordTagGroup: (tagId: number, groupId: number) => Promise<void>;
@@ -257,7 +257,6 @@ defineProps<{
           :groups="recordTagGroups"
           :tags="recordTags"
           :on-save-tag-group="onSaveRecordTagGroup"
-          :on-delete-tag-group="onDeleteRecordTagGroup"
           :on-save-tag="onSaveRecordTag"
           :on-delete-tag="onDeleteRecordTag"
           :on-attach-tag-group="onAttachRecordTagGroup"

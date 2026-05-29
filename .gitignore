@@ -8,3 +8,4 @@ src-tauri/icons/ios/
 _tmp_*
 DB/
 .codex
+.vscode

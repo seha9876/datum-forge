@@ -217,10 +217,6 @@ export interface SaveRecordTagGroupPayload {
   name: string;
 }
 
-export interface DeleteRecordTagGroupPayload {
-  groupId: number;
-}
-
 export interface SaveRecordTagPayload {
   id?: number | null;
   name: string;
