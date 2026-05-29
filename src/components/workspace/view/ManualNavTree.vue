@@ -66,6 +66,7 @@ interface ManualTreePendingDrag {
   pointerId: number;
   startX: number;
   startY: number;
+  captureElement: HTMLElement | null;
 }
 
 /** ドラッグ中のレコードが、どのレコードの前後へ入るかを示す表示状態です。 */
@@ -75,7 +76,7 @@ interface ManualTreeDropIndicator {
 }
 
 /** クリックとドラッグを見分けるため、マウスがこの距離以上動いたらドラッグ扱いにします。 */
-const DRAG_START_DISTANCE = 4;
+const DRAG_START_DISTANCE = 8;
 /** Vuetify が各 tree item に付ける行要素です。選択時の背景色もこの行に出ます。 */
 const MANUAL_TREE_ROW_SELECTOR = ".v-list-item";
 
@@ -557,8 +558,8 @@ function cancelDragPreviewPosition() {
 }
 
 /**
- * ドラッグの候補を記録します。
- * すぐにドラッグ扱いにすると通常クリックの選択を邪魔するため、移動距離を見てからプレビューを出します。
+ * レコード行で押下されたときだけ、ドラッグの候補を記録します。
+ * ここではクリック選択を邪魔しないよう、まだ pointer capture も preventDefault もしません。
  */
 function beginExperimentalPointerDrag(event: PointerEvent) {
   // 左クリック以外はドラッグ開始として扱いません。
@@ -572,7 +573,7 @@ function beginExperimentalPointerDrag(event: PointerEvent) {
 
   const rowElement = findManualTreeRowElement(event.target);
   const item = rowElement ? findItemFromTreeRow(rowElement) : null;
-  if (!item) {
+  if (!item || item.kind !== "record") {
     return;
   }
 
@@ -582,14 +583,10 @@ function beginExperimentalPointerDrag(event: PointerEvent) {
     item,
     pointerId: event.pointerId,
     startX: event.clientX,
-    startY: event.clientY
+    startY: event.clientY,
+    captureElement:
+      event.currentTarget instanceof HTMLElement ? event.currentTarget : null
   };
-
-  const target = event.currentTarget;
-  if (target instanceof HTMLElement) {
-    // マウスが要素外へ少し出ても pointermove/up を受け取れるようにします。
-    target.setPointerCapture(event.pointerId);
-  }
 }
 
 /**
@@ -666,6 +663,14 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
 
   if (!dragPreview.value) {
     // しきい値を超えた最初の move で、ドラッグ中の見た目へ切り替えます。
+    if (
+      pending.captureElement &&
+      !pending.captureElement.hasPointerCapture(event.pointerId)
+    ) {
+      // ドラッグ確定後だけ pointer capture し、通常クリックを邪魔しないようにします。
+      pending.captureElement.setPointerCapture(event.pointerId);
+    }
+
     draggingItemId.value = pending.item.id;
     dragPreview.value = {
       id: pending.item.id,
@@ -689,21 +694,21 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
   event.preventDefault();
 }
 
-/** ドラッグまたはドラッグ候補が終わったら、並び替え保存を試みてから表示状態を解除します。 */
+/** ドラッグまたはドラッグ候補が終わったら、必要な保存だけ試みて表示状態を解除します。 */
 function endExperimentalPointerDrag(event?: PointerEvent) {
-  if (event) {
+  if (event && dragPreview.value) {
     // pointerup 時点のマウス位置で、最後に見えていた挿入先と同じ判定を使って保存します。
     void reorderDraggedRecord(event).catch(() => undefined);
   }
 
-  if (event) {
-    const target = event.currentTarget;
+  const captureElement = pendingDrag.value?.captureElement;
+  if (event && captureElement) {
     if (
-      target instanceof HTMLElement &&
-      target.hasPointerCapture(event.pointerId)
+      captureElement instanceof HTMLElement &&
+      captureElement.hasPointerCapture(event.pointerId)
     ) {
       // setPointerCapture した要素を解放し、次の操作へ影響しないようにします。
-      target.releasePointerCapture(event.pointerId);
+      captureElement.releasePointerCapture(event.pointerId);
     }
   }
 
