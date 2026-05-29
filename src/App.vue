@@ -83,12 +83,16 @@ const {
   error: viewError,
   clearError: clearViewError,
   layoutCardItems,
+  activeLayoutTemplateId,
+  activeLayoutTemplateName,
   folderCount,
   isFolderExpanded,
   layoutSaving: viewLayoutSaving,
   layoutTemplates,
   loading: viewLoading,
   assignFolderLayoutTemplate,
+  assignRecordLayoutTemplate,
+  clearRecordLayoutTemplate,
   createFolderLayoutTemplate,
   createLayoutTemplate,
   deleteLayoutTemplate,
@@ -431,6 +435,8 @@ onMounted(() => {
                 :editing-record-id="editingRecordId"
                 :error="store.error"
                 :layout-card-items="layoutCardItems"
+                :active-layout-template-id="activeLayoutTemplateId"
+                :active-layout-template-name="activeLayoutTemplateName"
                 :field-types="fieldTypes"
                 :field-type-label="fieldTypeLabel"
                 :field-type-meta="fieldTypeMeta"
@@ -465,6 +471,7 @@ onMounted(() => {
                 :view-layout-saving="viewLayoutSaving"
                 :view-loading="viewLoading"
                 :on-assign-folder-layout-template="assignFolderLayoutTemplate"
+                :on-assign-record-layout-template="assignRecordLayoutTemplate"
                 :on-delete-column="deleteColumn"
                 :on-delete-record="deleteRecord"
                 :on-remove-option-row="removeOptionRow"
@@ -486,6 +493,7 @@ onMounted(() => {
                 :on-create-folder="createFolder"
                 :on-create-folder-layout-template="createFolderLayoutTemplate"
                 :on-clear-template-preview="clearTemplatePreview"
+                :on-clear-record-layout-template="clearRecordLayoutTemplate"
                 :on-select-template-preview-record="selectTemplatePreviewRecord"
                 :on-save-layout-card-column-bindings="saveLayoutCardColumnBindings"
                 :on-save-layout-template-cards="saveLayoutTemplateCards"

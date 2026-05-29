@@ -27,6 +27,7 @@ Datum Forge は、ユーザーが作成する実データテーブルと、ア�
 - `view_nav_folder_records`
 - `view_layout_templates`
 - `view_layout_folder_template_assignments`
+- `view_layout_record_template_assignments`
 - `view_layout_template_cards`
 - `view_layout_card_column_bindings`
 - `view_layout_card_overrides`
@@ -51,6 +52,10 @@ Datum Forge は、ユーザーが作成する実データテーブルと、ア�
 
 `view_nav_nodes` 0..1 - 1 `view_layout_folder_template_assignments`
 
+`view_nav_folder_records` 0..1 - 1 `view_layout_record_template_assignments`
+
+`view_layout_templates` 1 - N `view_layout_record_template_assignments`
+
 `view_layout_templates` 1 - N `view_layout_template_cards`
 
 `view_layout_template_cards` 1 - N `view_layout_card_column_bindings`
@@ -66,6 +71,7 @@ Datum Forge は、ユーザーが作成する実データテーブルと、ア�
 - 共有テンプレートは `folder_id IS NULL` とする。
 - フォルダー専用テンプレートは `folder_id` を持つ。
 - フォルダーへの有効テンプレート割当は `view_layout_folder_template_assignments` に保存する。
+- データ個別テンプレート割当は `view_layout_record_template_assignments` に保存する。
 - カード枠は `view_layout_template_cards` に保存する。
 - カード枠と表示カラムの対応は `view_layout_card_column_bindings` に保存する。
 - レコードごとの移動、リサイズ、表示状態、スタイル差分は `view_layout_card_overrides` に保存する。
@@ -74,7 +80,7 @@ Datum Forge は、ユーザーが作成する実データテーブルと、ア�
 
 テンプレート編集では任意のテーブル/レコードを一時プレビューできる。プレビュー時の一時紐付けは保存せず、永続的なカード枠と表示カラムの対応は `view_layout_card_column_bindings` のみを正とする。
 
-フォルダー内レコードを開いたときに有効テンプレートが未割当なら、空のフォルダー専用テンプレートを自動作成して割り当てる。
+フォルダー内レコードを開いたときの有効テンプレートは、データ個別テンプレート、フォルダーテンプレート、未設定の順で解決する。有効テンプレートが未割当なら自動作成せず未設定として扱う。
 
 ## 作成しない廃止済みレイアウトテーブル
 
@@ -92,4 +98,3 @@ Datum Forge は、ユーザーが作成する実データテーブルと、ア�
 ## 参照カラム
 
 `reference` 型の参照先テーブルは `app_table_columns.ref_table_id` で固定する。実データには参照先レコードIDを保存し、表示時は参照先テーブルの代表表示カラムを使って `id:label` 形式で表示する。
-

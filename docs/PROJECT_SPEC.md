@@ -56,7 +56,8 @@ DBセットアップ未完了時は通常ワークスペースを表示せず、
 
 - フォルダー階層は `view_nav_nodes` で管理する。
 - フォルダーに登録した既存レコードは `view_nav_folder_records` で管理する。
-- フォルダー内レコードを開くと、現在の有効テンプレートを使って表示する。
+- フォルダー内レコードを開くと、データ個別テンプレート、フォルダーテンプレートの順で解決した有効テンプレートを使って表示する。
+- フォルダー内レコードは左側の目次行全体をドラッグして同じフォルダー内で並び替えでき、順序は `view_nav_folder_records.sort_order` に保存する。
 
 #### レイアウトテンプレート
 
@@ -70,21 +71,32 @@ DBセットアップ未完了時は通常ワークスペースを表示せず、
 - 共有テンプレートは `folder_id = NULL` とする。
 - フォルダー専用テンプレートは `folder_id` を持つ。
 - フォルダーへの有効テンプレート割当は `view_layout_folder_template_assignments` に保存する。
-- フォルダー内レコードを開くときに割当がなければ、空のフォルダー専用テンプレートを自動作成して割り当てる。
+- データ個別テンプレート割当は `view_layout_record_template_assignments` に保存する。
+- 有効テンプレートの優先順位は、データ個別テンプレート、フォルダーテンプレート、未設定の順とする。
+- フォルダー内レコードを開くときに有効テンプレートがなければ、自動作成せず未設定として扱う。
 - テンプレート編集ではカード枠の追加、移動、リサイズ、削除、スタイル編集を行う。
 - テンプレート編集では任意のテーブル/レコードを選んで一時プレビューできる。プレビューはテンプレート本体に保存しない。
 - テンプレート編集のプレビューでは、既存の `view_layout_card_column_bindings` を初期値として読み込み、一時紐付けで表示カラムを仮に変更できる。一時紐付けは保存しない。
 - 一時紐付けUIは折りたたみ可能とし、未紐付けカードがある場合だけ自動展開する。
 - テンプレート編集の非編集時は、プレビュー対象がある場合に実データを完成イメージとして表示する。編集時のみカード操作と一時紐付け操作を行える。
-- レコード個別キャンバスでは、テンプレート選択やテンプレート編集は行わず、カード枠への個別差分だけを保存する。
+- レコード個別キャンバスでは、テンプレート編集は行わず、データ個別テンプレート選択とカード枠への個別差分を保存する。
+
+#### テンプレート設定
+
+- レコード表示画面の設定ボタン名は `テンプレート設定` とする。
+- テンプレート設定パネルでは、適用元を `このデータ専用`、`フォルダから継承中`、`未設定` のチップで表示する。
+- `フォルダから継承中` のチップにはテンプレート名を括弧付きで省略表示し、長い名前は tooltip で全文を確認できる。
+- 個別テンプレート select では、現在フォルダーで使える共有テンプレートとフォルダー専用テンプレートから、フォルダーテンプレートと同じものを除外して選択できる。
+- 個別テンプレートを解除すると、フォルダーテンプレート継承または未設定へ戻る。
+- フォルダーテンプレートと同じテンプレートを個別指定しようとした場合は、個別割当を作らず解除扱いにする。
 
 #### カードとカラムの紐付け
 
 - テンプレート本体はテーブル非依存のため、カード枠と表示カラムの対応は `view_layout_card_column_bindings` に `template_id + table_id + card_id -> column_id` として保存する。
-- レコード表示時に対象テーブルの紐付けがない場合は、紐付け設定UIを表示する。
-- 紐付けUIではキャンバス上のカード位置を見ながら、カードごとに対象テーブルのカラムを選択できる。
-- 紐付け済み後もレコード表示画面の `紐付け設定` から同じテーブル向けの紐付けを編集できる。
-- 紐付け設定パネルは開閉をトグルでき、未保存の変更がある状態で閉じようとした場合は破棄確認ダイアログを表示する。
+- レコード表示時に対象テーブルの紐付けがない場合は、テンプレート設定パネル内で表示カラムを選択できる。
+- テンプレート設定パネルではキャンバス上のカード位置を見ながら、カードごとに対象テーブルのカラムを1行UIで選択できる。
+- 紐付け済み後もレコード表示画面の `テンプレート設定` から同じテーブル向けの紐付けを編集できる。
+- テンプレート設定パネルは開閉をトグルでき、未保存の変更がある状態で閉じようとした場合は破棄確認ダイアログを表示する。
 - テンプレート編集画面では永続的な紐付け変更は行わない。
 
 #### レコード個別差分
@@ -108,8 +120,8 @@ DBセットアップ未完了時は通常ワークスペースを表示せず、
 - DB: `get_startup_database_status`, `create_database_file`, `setup_open_database_file`, `open_database_file`, `update_database_directory`, `rename_database_file`
 - テーブル: `bootstrap_app`, `create_table`, `get_table_detail`, `add_column`, `update_column`, `delete_column`, `reorder_columns`, `update_label_column`
 - レコード: `save_record`, `delete_record`, `get_reference_choices`
-- 閲覧目次: `list_view_nav_nodes`, `create_view_nav_folder`, `delete_view_nav_folder`, `get_view_table_sections`, `add_view_nav_folder_records`, `remove_view_nav_folder_record`
-- レイアウトテンプレート: `list_all_folder_layout_templates`, `list_view_layout_templates_for_folder`, `create_view_layout_template`, `rename_view_layout_template`, `duplicate_view_layout_template`, `delete_view_layout_template`, `assign_view_layout_folder_template`
+- 閲覧目次: `list_view_nav_nodes`, `create_view_nav_folder`, `delete_view_nav_folder`, `get_view_table_sections`, `add_view_nav_folder_records`, `remove_view_nav_folder_record`, `reorder_view_nav_folder_records`
+- レイアウトテンプレート: `list_all_folder_layout_templates`, `list_view_layout_templates_for_folder`, `create_view_layout_template`, `rename_view_layout_template`, `duplicate_view_layout_template`, `delete_view_layout_template`, `assign_view_layout_folder_template`, `assign_view_layout_record_template`, `clear_view_layout_record_template`
 - カード枠: `get_view_layout_template_cards`, `save_view_layout_template_cards`, `get_resolved_view_field_layout`, `list_view_layout_card_column_bindings`, `save_view_layout_card_column_bindings`, `save_view_layout_card_overrides`, `reset_view_layout_card_override`, `reset_view_layout_card_overrides`
 - タグ: `list_record_tags`, `list_record_tags_for_record`, `save_record_tag_group`, `delete_record_tag_group`, `save_record_tag`, `delete_record_tag`, `attach_record_tag_group`, `detach_record_tag_group`, `attach_record_tag`, `create_and_attach_record_tag`, `detach_record_tag`
 
@@ -125,6 +137,7 @@ DBセットアップ未完了時は通常ワークスペースを表示せず、
 
 - `view_layout_templates`
 - `view_layout_folder_template_assignments`
+- `view_layout_record_template_assignments`
 - `view_layout_template_cards`
 - `view_layout_card_column_bindings`
 - `view_layout_card_overrides`
@@ -147,4 +160,3 @@ DBセットアップ未完了時は通常ワークスペースを表示せず、
 
 - DB仕様: `docs/DB_SPEC.md`
 - ERメモ: `docs/ER_MEMO.md`
-

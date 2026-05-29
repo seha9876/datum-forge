@@ -6,6 +6,8 @@ import type {
   AppBootstrap,
   AppSettings,
   AssignViewLayoutFolderTemplatePayload,
+  AssignViewLayoutRecordTemplatePayload,
+  ClearViewLayoutRecordTemplatePayload,
   CreateDatabasePayload,
   CreateTablePayload,
   AttachRecordTagPayload,
@@ -213,6 +215,18 @@ export const api = {
     payload: AssignViewLayoutFolderTemplatePayload
   ) =>
     invoke<ViewLayoutTemplate>("assign_view_layout_folder_template", {
+      payload
+    }),
+  assignViewLayoutRecordTemplate: (
+    payload: AssignViewLayoutRecordTemplatePayload
+  ) =>
+    invoke<ViewNavFolderRecord>("assign_view_layout_record_template", {
+      payload
+    }),
+  clearViewLayoutRecordTemplate: (
+    payload: ClearViewLayoutRecordTemplatePayload
+  ) =>
+    invoke<ViewNavFolderRecord>("clear_view_layout_record_template", {
       payload
     }),
   getResolvedViewFieldLayout: (payload: GetResolvedViewFieldLayoutPayload) =>

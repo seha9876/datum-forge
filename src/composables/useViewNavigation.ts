@@ -33,6 +33,7 @@ export function useViewNavigation() {
 
   const layoutCardItems = ref<ViewLayoutCardItem[]>([]);
   const activeLayoutTemplateId = ref<number | null>(null);
+  const activeLayoutTemplateName = ref<string | null>(null);
   const layoutTemplates = ref<ViewLayoutTemplate[]>([]);
   const selectedLayoutTemplate = ref<ViewLayoutTemplate | null>(null);
   const templateLayoutCards = ref<ViewLayoutTemplateCard[]>([]);
@@ -115,6 +116,7 @@ export function useViewNavigation() {
     selectedTableDetail.value = null;
     layoutCardItems.value = [];
     activeLayoutTemplateId.value = null;
+    activeLayoutTemplateName.value = null;
     void loadFolderLayoutTemplates(node.id);
   }
 
@@ -135,7 +137,8 @@ export function useViewNavigation() {
   async function loadSelectedTableRecord(
     tableId: number,
     recordId: number,
-    folderId: number | null
+    folderId: number | null,
+    folderRecordId: number | null
   ) {
     error.value = "";
     loading.value = true;
@@ -146,12 +149,14 @@ export function useViewNavigation() {
         api.getResolvedViewFieldLayout({
           tableId,
           recordId,
-          folderId
+          folderId,
+          folderRecordId
         })
       ]);
       selectedTableDetail.value = detail;
       layoutCardItems.value = resolvedLayout.items;
       activeLayoutTemplateId.value = resolvedLayout.activeTemplateId;
+      activeLayoutTemplateName.value = resolvedLayout.activeTemplateName;
     } catch (loadError) {
       error.value =
         loadError instanceof Error ? loadError.message : String(loadError);
@@ -233,6 +238,49 @@ export function useViewNavigation() {
       templateId
     });
     await loadFolderLayoutTemplates(folderId);
+    if (
+      selectedItem.value?.type === "tableRecord" &&
+      selectedItem.value.folderId === folderId &&
+      !selectedItem.value.recordTemplateId
+    ) {
+      await reloadSelectedLayout();
+    }
+  }
+
+  async function assignRecordLayoutTemplate(
+    folderRecordId: number,
+    templateId: number
+  ) {
+    error.value = "";
+    try {
+      const updatedRecord = await api.assignViewLayoutRecordTemplate({
+        folderRecordId,
+        templateId
+      });
+      mergeFolderRecords([updatedRecord]);
+      syncSelectedFolderRecord(updatedRecord);
+      await reloadSelectedLayout();
+    } catch (saveError) {
+      error.value =
+        saveError instanceof Error ? saveError.message : String(saveError);
+      throw saveError;
+    }
+  }
+
+  async function clearRecordLayoutTemplate(folderRecordId: number) {
+    error.value = "";
+    try {
+      const updatedRecord = await api.clearViewLayoutRecordTemplate({
+        folderRecordId
+      });
+      mergeFolderRecords([updatedRecord]);
+      syncSelectedFolderRecord(updatedRecord);
+      await reloadSelectedLayout();
+    } catch (saveError) {
+      error.value =
+        saveError instanceof Error ? saveError.message : String(saveError);
+      throw saveError;
+    }
   }
 
   async function selectLayoutTemplate(template: ViewLayoutTemplate) {
@@ -243,6 +291,7 @@ export function useViewNavigation() {
     selectedTableDetail.value = null;
     layoutCardItems.value = [];
     activeLayoutTemplateId.value = null;
+    activeLayoutTemplateName.value = null;
     selectedFolderLayoutTemplates.value = [];
     selectedFolderActiveTemplateId.value = null;
     selectedLayoutTemplate.value = template;
@@ -299,8 +348,29 @@ export function useViewNavigation() {
       selectedFolderLayoutTemplates.value.filter(
         (template) => template.id !== templateId
       );
+    folderRecords.value = folderRecords.value.map((record) =>
+      record.recordTemplateId === templateId
+        ? { ...record, recordTemplateId: null }
+        : record
+    );
+    if (
+      selectedItem.value?.type === "tableRecord" &&
+      selectedItem.value.recordTemplateId === templateId
+    ) {
+      selectedItem.value = {
+        ...selectedItem.value,
+        recordTemplateId: null
+      };
+      await reloadSelectedLayout();
+    }
     if (selectedFolderActiveTemplateId.value === templateId) {
       selectedFolderActiveTemplateId.value = null;
+    }
+    if (
+      selectedItem.value?.type === "tableRecord" &&
+      activeLayoutTemplateId.value === templateId
+    ) {
+      await reloadSelectedLayout();
     }
     if (selectedLayoutTemplate.value?.id === templateId) {
       selectedLayoutTemplate.value = null;
@@ -459,10 +529,12 @@ export function useViewNavigation() {
     const resolvedLayout = await api.getResolvedViewFieldLayout({
       tableId: selected.tableId,
       recordId: selected.recordId,
-      folderId: selected.folderId ?? null
+      folderId: selected.folderId ?? null,
+      folderRecordId: selected.folderRecordId ?? null
     });
     layoutCardItems.value = resolvedLayout.items;
     activeLayoutTemplateId.value = resolvedLayout.activeTemplateId;
+    activeLayoutTemplateName.value = resolvedLayout.activeTemplateName;
   }
 
   async function createFolder(parentId: number | null, name: string) {
@@ -505,12 +577,16 @@ export function useViewNavigation() {
       tableDisplayName: record.tableDisplayName,
       recordId: record.recordId,
       recordLabel: record.recordLabel,
-      folderId: record.folderId
+      folderId: record.folderId,
+      folderRecordId: record.id,
+      recordTemplateId: record.recordTemplateId
     };
+    void loadFolderLayoutTemplates(record.folderId);
     void loadSelectedTableRecord(
       record.tableId,
       record.recordId,
-      record.folderId
+      record.folderId,
+      record.id
     );
   }
 
@@ -548,6 +624,7 @@ export function useViewNavigation() {
         selectedTableDetail.value = null;
         layoutCardItems.value = [];
         activeLayoutTemplateId.value = null;
+        activeLayoutTemplateName.value = null;
       }
       layoutTemplates.value = layoutTemplates.value.filter(
         (template) =>
@@ -620,6 +697,23 @@ export function useViewNavigation() {
     ].sort(compareFolderRecords);
   }
 
+  function syncSelectedFolderRecord(record: ViewNavFolderRecord) {
+    const selected = selectedItem.value;
+    if (
+      selected?.type !== "tableRecord" ||
+      selected.folderRecordId !== record.id
+    ) {
+      return;
+    }
+
+    selectedItem.value = {
+      ...selected,
+      folderId: record.folderId,
+      folderRecordId: record.id,
+      recordTemplateId: record.recordTemplateId
+    };
+  }
+
   function mergeLayoutTemplates(templates: ViewLayoutTemplate[]) {
     if (templates.length === 0) {
       return;
@@ -654,6 +748,7 @@ export function useViewNavigation() {
         selectedTableDetail.value = null;
         layoutCardItems.value = [];
         activeLayoutTemplateId.value = null;
+        activeLayoutTemplateName.value = null;
       }
       if (
         selectedItem.value?.type === "folder" &&
@@ -707,6 +802,8 @@ export function useViewNavigation() {
     error,
     clearError,
     layoutCardItems,
+    activeLayoutTemplateId,
+    activeLayoutTemplateName,
     folderCount,
     isFolderExpanded,
     layoutSaving,
@@ -721,6 +818,8 @@ export function useViewNavigation() {
     selectedFolderActiveTemplateId,
     loading,
     assignFolderLayoutTemplate,
+    assignRecordLayoutTemplate,
+    clearRecordLayoutTemplate,
     createFolderLayoutTemplate,
     createLayoutTemplate,
     deleteLayoutTemplate,
