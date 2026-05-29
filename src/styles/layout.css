@@ -701,6 +701,30 @@
   letter-spacing: 0;
 }
 
+.app-window-mode-tabs {
+  flex: 0 1 520px;
+  min-width: 220px;
+}
+
+.app-window-mode-tabs.mode-tabs-titlebar {
+  overflow: hidden;
+}
+
+.app-window-mode-tabs .v-tabs {
+  height: 100%;
+}
+
+.app-window-mode-tabs .v-tab {
+  min-width: 0;
+  min-height: calc(var(--app-window-titlebar-height) - 2px);
+  padding-inline: 0.65rem;
+  letter-spacing: 0;
+}
+
+.app-window-mode-tabs .v-tab__slider {
+  height: 2px;
+}
+
 /* タイトルバーの空白部分です。ここを掴むとウィンドウを移動できます。 */
 .app-window-drag-spacer {
   align-self: stretch;
@@ -779,16 +803,6 @@
 
 .topbar-title-wrap small {
   color: var(--muted);
-}
-
-.topbar-mode-tabs {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.topbar-mode-tabs .mode-tabs-card {
-  border: 0 !important;
-  box-shadow: none !important;
 }
 
 .topbar-actions {

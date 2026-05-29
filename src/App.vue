@@ -10,6 +10,7 @@ import TableCreateDialog from "./components/TableCreateDialog.vue";
 import TableSidebar from "./components/TableSidebar.vue";
 import MasterManagementSidebar from "./components/workspace/master/MasterManagementSidebar.vue";
 import ViewNavigationSidebar from "./components/workspace/view/ViewNavigationSidebar.vue";
+import WorkspaceModeTabs from "./components/workspace/WorkspaceModeTabs.vue";
 import WorkspaceHeader from "./components/WorkspaceHeader.vue";
 import WorkspaceModeHelpDialog from "./components/WorkspaceModeHelpDialog.vue";
 import {
@@ -462,6 +463,12 @@ onMounted(() => {
         </v-btn>
       </nav>
 
+      <WorkspaceModeTabs
+        v-model="currentMode"
+        class="app-window-mode-tabs app-window-no-drag"
+        variant="titlebar"
+      />
+
       <div class="app-window-drag-spacer" aria-hidden="true" />
 
       <div class="app-window-controls" aria-label="ウィンドウ操作">
@@ -570,7 +577,7 @@ onMounted(() => {
         <div class="app-main-frame">
           <!-- 現在テーブル名とモード切り替えを表示する上部バーです。 -->
           <WorkspaceHeader
-            v-model="currentMode"
+            :model-value="currentMode"
             :table-title="workspaceTitle"
             :table-subtitle="workspaceSubtitle"
             :on-open-mode-help="openModeHelp"

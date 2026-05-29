@@ -1,9 +1,15 @@
 ﻿<script setup lang="ts">
 import type { WorkspaceMode } from "../../composables/useWorkspaceMode";
 
-defineProps<{
-  modelValue: WorkspaceMode;
-}>();
+withDefaults(
+  defineProps<{
+    modelValue: WorkspaceMode;
+    variant?: "card" | "titlebar";
+  }>(),
+  {
+    variant: "card"
+  }
+);
 
 const emit = defineEmits<{
   "update:modelValue": [WorkspaceMode];
@@ -130,6 +136,7 @@ function handleTabsWheel(event: WheelLikeEvent) {
 <template>
   <!-- ワークスペース全体の表示モードを切り替えるタブ群です。 -->
   <v-card
+    v-if="variant === 'card'"
     class="mode-tabs-card"
     color="surface"
     variant="elevated"
@@ -156,4 +163,27 @@ function handleTabsWheel(event: WheelLikeEvent) {
       </v-tab>
     </v-tabs>
   </v-card>
+
+  <div
+    v-else
+    class="mode-tabs-card mode-tabs-titlebar"
+    @wheel="handleTabsWheel"
+  >
+    <v-tabs
+      :model-value="modelValue"
+      color="primary"
+      align-tabs="start"
+      density="compact"
+      @update:model-value="emit('update:modelValue', $event as WorkspaceMode)"
+    >
+      <v-tab
+        v-for="mode in modes"
+        :key="mode.id"
+        :value="mode.id"
+        :prepend-icon="mode.icon"
+      >
+        {{ mode.label }}
+      </v-tab>
+    </v-tabs>
+  </div>
 </template>
