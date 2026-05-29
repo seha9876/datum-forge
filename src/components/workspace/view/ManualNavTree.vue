@@ -98,7 +98,6 @@ const dropIndicator = ref<ManualTreeDropIndicator | null>(null);
 const pendingDrag = ref<ManualTreePendingDrag | null>(null);
 let latestPreviewPoint = { x: 0, y: 0 };
 let previewAnimationFrame: number | null = null;
-let lastLoggedDropIndicatorKey = "";
 
 /** フォルダ行を v-treeview 内で一意に見分ける ID を作ります。 */
 function folderItemId(folderId: number) {
@@ -687,19 +686,6 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
       }
     : null;
 
-  const dropIndicatorKey = dropIndicator.value
-    ? `${dropIndicator.value.targetItemId}:${dropIndicator.value.position}`
-    : "";
-
-  if (dropIndicator.value && dropIndicatorKey !== lastLoggedDropIndicatorKey) {
-    console.log("drop indicator changed", {
-      targetItemId: dropIndicator.value.targetItemId,
-      position: dropIndicator.value.position,
-      targetTitle: dropTarget?.targetItem.title
-    });
-  }
-
-  lastLoggedDropIndicatorKey = dropIndicatorKey;
   event.preventDefault();
 }
 
