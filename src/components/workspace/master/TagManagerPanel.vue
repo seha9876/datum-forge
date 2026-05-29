@@ -63,7 +63,6 @@ const props = defineProps<{
   groups: RecordTagGroup[];
   tags: RecordTag[];
   onSaveTagGroup: (payload: SaveRecordTagGroupPayload) => Promise<void>;
-  onDeleteTagGroup: (groupId: number) => Promise<void>;
   onSaveTag: (payload: SaveRecordTagPayload) => Promise<void>;
   onDeleteTag: (tagId: number) => Promise<void>;
   onAttachTagGroup: (tagId: number, groupId: number) => Promise<void>;

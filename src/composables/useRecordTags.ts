@@ -99,11 +99,6 @@ export function useRecordTags() {
     await refreshTags();
   }
 
-  async function deleteTagGroup(groupId: number) {
-    await api.deleteRecordTagGroup({ groupId });
-    await refreshTags();
-  }
-
   async function saveTag(payload: SaveRecordTagPayload) {
     await api.saveRecordTag(payload);
     await refreshTags();
@@ -132,7 +127,6 @@ export function useRecordTags() {
     clearRecordTags,
     createAndAttachTag,
     deleteTag,
-    deleteTagGroup,
     detachTag,
     detachTagGroup,
     error,

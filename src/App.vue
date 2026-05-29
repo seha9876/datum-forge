@@ -134,7 +134,6 @@ const {
   clearRecordTags,
   createAndAttachTag,
   deleteTag,
-  deleteTagGroup,
   detachTag,
   detachTagGroup,
   groups: recordTagGroups,
@@ -574,7 +573,7 @@ onMounted(() => {
 
       <v-main class="app-main">
         <div class="app-main-frame">
-          <!-- 現在テーブル名とモード切り替えを表示する上部バーです。 -->
+          <!-- 現在の画面名、ヘルプ、設定ボタンを表示する上部バーです。 -->
           <WorkspaceHeader
             :model-value="currentMode"
             :table-title="workspaceTitle"
@@ -589,7 +588,7 @@ onMounted(() => {
               :on-back="closeSettingsPage"
             />
             <div v-else class="workspace-shell">
-              <!-- 設計・データ・マスタ管理の各ワークスペースを切り替えて表示します。 -->
+              <!-- タイトルバーで選んだモードに合わせて各ワークスペースを表示します。 -->
               <ModeWorkspaceShell
                 :add-option-row="addOptionRow"
                 :bootstrap="store.bootstrap"
@@ -648,7 +647,6 @@ onMounted(() => {
                 :on-submit-record="submitRecord"
                 :on-sync-option-ordering="syncOptionOrdering"
                 :on-save-record-tag-group="saveTagGroup"
-                :on-delete-record-tag-group="deleteTagGroup"
                 :on-save-record-tag="saveTag"
                 :on-delete-record-tag="deleteTag"
                 :on-attach-record-tag-group="attachTagGroup"

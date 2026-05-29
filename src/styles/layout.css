@@ -16,17 +16,6 @@
   backdrop-filter: blur(12px);
 }
 
-.stat-card {
-  text-align: center;
-}
-
-.stat-card {
-  display: grid;
-  place-items: center;
-  min-width: 104px;
-  padding: 1rem 1.1rem;
-}
-
 .section-header,
 .toolbar {
   display: flex;
@@ -66,13 +55,6 @@
   gap: 1rem;
 }
 
-.view-mode-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-  gap: 1rem;
-  min-height: 560px;
-}
-
 .view-content-panel {
   min-height: 0;
 }
@@ -106,18 +88,6 @@
 
 .view-sidebar-panel-actions .v-btn {
   flex: 0 0 auto;
-}
-
-.view-pattern-toggle {
-  width: 100%;
-  min-height: 40px;
-}
-
-.view-pattern-toggle .v-btn {
-  flex: 1 1 0;
-  min-height: 34px;
-  font-size: 0.88rem;
-  letter-spacing: 0;
 }
 
 .view-empty-hint {
@@ -188,14 +158,6 @@
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.6rem;
-}
-
-.compact-field {
-  margin-bottom: 0;
-}
-
-.compact-field.wide {
-  min-width: 0;
 }
 
 .help-text {
@@ -295,10 +257,6 @@
   font-weight: 700;
 }
 
-.toggle-card {
-  min-height: 48px;
-}
-
 .table-wrap {
   overflow-x: auto;
 }
@@ -353,14 +311,6 @@
 .master-workspace {
   display: grid;
   gap: 1rem;
-}
-
-.master-tabs {
-  width: fit-content;
-}
-
-.master-tabs .v-btn {
-  min-width: 92px;
 }
 
 .tag-manager-grid {
@@ -627,11 +577,6 @@
 
   .table-onboarding-steps {
     grid-template-columns: 1fr;
-  }
-
-  .view-mode-grid {
-    grid-template-columns: 1fr;
-    min-height: auto;
   }
 
   .switch-grid {

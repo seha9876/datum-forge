@@ -23,13 +23,6 @@
   padding-bottom: 2.4rem;
 }
 
-.view-placeholder-stats {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-}
-
 .view-empty-onboarding {
   display: grid;
   justify-items: center;
@@ -244,11 +237,6 @@
   overflow: hidden;
 }
 
-.view-template-select {
-  width: min(280px, 26vw);
-  min-width: 220px;
-}
-
 .view-template-preview-menu {
   width: min(420px, calc(100vw - 2rem));
 }
@@ -263,94 +251,6 @@
 
 .view-layout-workspace:has(.view-binding-panel) {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
-}
-
-.view-unplaced-fields {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0.75rem;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  padding: 0.9rem;
-  border: 1px solid rgba(var(--v-theme-outline), 0.18);
-  border-radius: 18px;
-  background: rgba(var(--v-theme-surface), 0.62);
-}
-
-.view-unplaced-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.view-unplaced-heading span {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.view-unplaced-list {
-  display: grid;
-  align-content: start;
-  gap: 0.55rem;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.view-unplaced-field {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.65rem 0.7rem;
-  border: 1px solid rgba(var(--v-theme-outline), 0.18);
-  border-radius: 14px;
-  background: rgba(var(--v-theme-surface), 0.78);
-  color: var(--text);
-  text-align: left;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-
-.view-unplaced-field.dragging {
-  border-color: var(--accent-soft);
-  cursor: grabbing;
-  opacity: 0.72;
-}
-
-.view-unplaced-drag-preview {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  max-width: 240px;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--accent-soft);
-  border-radius: 14px;
-  background: rgba(var(--v-theme-surface), 0.94);
-  box-shadow: 0 16px 32px rgba(var(--v-theme-shadow), 0.16);
-  color: var(--text);
-  font-weight: 700;
-  pointer-events: none;
-}
-
-.view-unplaced-drag-preview span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.view-unplaced-field span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .view-style-inspector,

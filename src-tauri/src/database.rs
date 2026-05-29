@@ -417,12 +417,6 @@ pub struct SaveRecordTagGroupPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeleteRecordTagGroupPayload {
-    pub group_id: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SaveRecordTagPayload {
     pub id: Option<i64>,
     pub name: String,
@@ -2346,26 +2340,6 @@ impl Db {
         };
 
         self.get_record_tag_group(group_id)
-    }
-
-    pub fn delete_record_tag_group(
-        &self,
-        payload: DeleteRecordTagGroupPayload,
-    ) -> Result<(), DbError> {
-        self.ensure_record_tag_group(payload.group_id)?;
-        self.conn.execute(
-            "DELETE FROM record_tag_group_links WHERE group_id = ?",
-            [payload.group_id],
-        )?;
-        self.conn.execute(
-            "UPDATE record_tags SET group_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE group_id = ?",
-            [payload.group_id],
-        )?;
-        self.conn.execute(
-            "DELETE FROM record_tag_groups WHERE id = ?",
-            [payload.group_id],
-        )?;
-        Ok(())
     }
 
     pub fn save_record_tag(&self, payload: SaveRecordTagPayload) -> Result<RecordTag, DbError> {

@@ -77,19 +77,6 @@ function joinCreateDbPath(directoryPath: string, stem: string) {
   return joinDbPath(directoryPath, createDbFileNameFromStem(trimmedStem));
 }
 
-/** 長いパスを画面上で読みやすい短い表記にします。 */
-function abbreviatePath(path: string) {
-  if (path.length <= 44) {
-    return path;
-  }
-
-  const normalized = path.split("\\").join("/");
-  const parts = normalized.split("/").filter(Boolean);
-  const fileName = parts[parts.length - 1] ?? DB_FILE_NAME;
-  const root = path.match(/^[A-Za-z]:/)?.[0] ?? parts[0] ?? "";
-  return `${root}...${fileName ? `\\${fileName}` : ""}`;
-}
-
 /** 選択したファイルが SQLite DB として扱える拡張子か確認します。 */
 function hasSupportedDbExtension(path: string) {
   return /\.(sqlite|db)$/i.test(path.trim());
@@ -133,9 +120,6 @@ export function useDatabaseSettings() {
   );
   const currentDbFileStem = computed(() =>
     getFileStem(currentDbFileName.value)
-  );
-  const abbreviatedCurrentDbPath = computed(() =>
-    abbreviatePath(currentDbPath.value)
   );
   const createPreviewDbPath = computed(() =>
     joinCreateDbPath(createDbDirectoryPath.value, createDbFileName.value)
@@ -377,7 +361,6 @@ export function useDatabaseSettings() {
   }
 
   return {
-    abbreviatedCurrentDbPath,
     canCreateNewDatabase,
     createDbDirectoryPath,
     createDbFileName,

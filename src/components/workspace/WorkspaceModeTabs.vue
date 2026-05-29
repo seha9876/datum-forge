@@ -1,17 +1,19 @@
 ﻿<script setup lang="ts">
 import type { WorkspaceMode } from "../../composables/useWorkspaceMode";
 
+type WorkspaceTabMode = Exclude<WorkspaceMode, "settings">;
+
 defineProps<{
   modelValue: WorkspaceMode;
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [WorkspaceMode];
+  "update:modelValue": [WorkspaceTabMode];
 }>();
 
 /** カスタムタイトルバーに表示するワークスペースモード定義です。 */
 const modes: Array<{
-  id: WorkspaceMode;
+  id: WorkspaceTabMode;
   label: string;
   icon: string;
 }> = [
@@ -135,7 +137,9 @@ function handleTabsWheel(event: WheelLikeEvent) {
       color="primary"
       align-tabs="start"
       density="compact"
-      @update:model-value="emit('update:modelValue', $event as WorkspaceMode)"
+      @update:model-value="
+        emit('update:modelValue', $event as WorkspaceTabMode)
+      "
     >
       <v-tab
         v-for="mode in modes"

@@ -13,7 +13,7 @@ use database::{
     AttachRecordTagPayload, ClearViewLayoutRecordTemplatePayload, CreateAndAttachRecordTagPayload,
     CreateDatabasePayload, CreateTablePayload, CreateViewLayoutTemplatePayload,
     CreateViewNavFolderPayload, Db, DeleteColumnPayload, DeleteRecordPayload,
-    DeleteRecordTagGroupPayload, DeleteRecordTagPayload, DeleteTablePayload,
+    DeleteRecordTagPayload, DeleteTablePayload,
     DeleteViewLayoutTemplatePayload, DeleteViewNavFolderPayload, DetachRecordTagPayload,
     DuplicateViewLayoutTemplatePayload, FolderViewLayoutTemplates,
     GetResolvedViewFieldLayoutPayload, GetViewLayoutTemplateCardsPayload,
@@ -749,21 +749,6 @@ fn save_record_tag_group(
 }
 
 #[tauri::command]
-fn delete_record_tag_group(
-    state: State<'_, AppState>,
-    payload: DeleteRecordTagGroupPayload,
-) -> Result<(), String> {
-    state
-        .db
-        .lock()
-        .map_err(|e| e.to_string())?
-        .as_ref()
-        .ok_or_else(db_not_ready_error)?
-        .delete_record_tag_group(payload)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn save_record_tag(
     state: State<'_, AppState>,
     payload: SaveRecordTagPayload,
@@ -931,7 +916,6 @@ pub fn run() {
             list_record_tags,
             list_record_tags_for_record,
             save_record_tag_group,
-            delete_record_tag_group,
             save_record_tag,
             delete_record_tag,
             attach_record_tag_group,

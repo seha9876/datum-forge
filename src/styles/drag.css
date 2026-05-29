@@ -449,13 +449,6 @@
   line-height: 1.45;
 }
 
-.view-binding-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.75rem;
-  width: 100%;
-}
-
 .view-binding-card {
   display: grid;
   grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr);
