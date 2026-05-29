@@ -31,7 +31,6 @@ defineProps<{
   onSelectFolder: (node: ViewNavTreeNode) => void;
   onSelectFolderRecord: (record: ViewNavFolderRecord) => void;
   onSelectLayoutTemplate: (template: ViewLayoutTemplate) => void;
-  onToggleSidebar: () => void;
   onToggleFolder: (folderId: number) => void;
   rail: boolean;
   selectedLayoutTemplateId: number | null;
@@ -43,45 +42,49 @@ const activeTab = ref<"navigation" | "templates">("navigation");
 </script>
 
 <template>
-  <v-card
+  <div
     v-if="rail"
-    tag="section"
-    color="surface"
-    variant="elevated"
-    rounded="xl"
-    elevation="2"
-    border
-    class="view-nav-sidebar-rail"
+    class="sidebar-content rail"
+    aria-label="閲覧モードサイドバー"
   >
-    <div class="sidebar-rail-shell view-nav-rail-shell">
-      <div class="sidebar-rail-actions">
-        <v-tooltip text="サイドバーを開く" location="right">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              class="sidebar-rail-toggle"
-              icon="mdi-menu"
-              variant="tonal"
-              color="primary"
-              size="large"
-              aria-label="サイドバーを開く"
-              @click="onToggleSidebar"
-            />
-          </template>
-        </v-tooltip>
+    <div class="sidebar-rail-shell no-actions">
+      <div class="sidebar-scroll-section rail">
+        <v-list
+          class="sidebar-list sidebar-list-rail"
+          nav
+          density="comfortable"
+        >
+          <v-tooltip text="目次" location="right">
+            <template #activator="{ props: tooltipProps }">
+              <v-list-item
+                v-bind="tooltipProps"
+                :active="activeTab === 'navigation'"
+                prepend-icon="mdi-folder-outline"
+                rounded="xl"
+                class="sidebar-table-item rail"
+                aria-label="目次"
+                @click="activeTab = 'navigation'"
+              />
+            </template>
+          </v-tooltip>
 
-        <div class="sidebar-rail-logo view-nav-rail-logo" aria-hidden="true">
-          <v-icon
-            :icon="
-              activeTab === 'templates'
-                ? 'mdi-view-dashboard-outline'
-                : 'mdi-folder-outline'
-            "
-          />
-        </div>
+          <v-tooltip text="テンプレート" location="right">
+            <template #activator="{ props: tooltipProps }">
+              <v-list-item
+                v-bind="tooltipProps"
+                :active="activeTab === 'templates'"
+                prepend-icon="mdi-view-dashboard-outline"
+                rounded="xl"
+                class="sidebar-table-item rail"
+                aria-label="テンプレート"
+                @click="activeTab = 'templates'"
+              />
+            </template>
+          </v-tooltip>
+        </v-list>
       </div>
     </div>
-  </v-card>
+  </div>
 
   <div v-else class="view-nav-sidebar-shell">
     <div class="view-nav-sidebar-header">
@@ -121,20 +124,6 @@ const activeTab = ref<"navigation" | "templates">("navigation");
           </template>
         </v-tooltip>
       </v-btn-toggle>
-
-      <v-tooltip text="サイドバーを閉じる" location="bottom">
-        <template #activator="{ props: tooltipProps }">
-          <v-btn
-            v-bind="tooltipProps"
-            icon="mdi-chevron-left"
-            variant="text"
-            size="small"
-            class="sidebar-collapse-btn view-nav-collapse-btn"
-            aria-label="サイドバーを閉じる"
-            @click="onToggleSidebar"
-          />
-        </template>
-      </v-tooltip>
     </div>
 
     <ViewNavigationPanel

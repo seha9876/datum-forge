@@ -17,20 +17,6 @@
   backdrop-filter: blur(12px);
 }
 
-.sidebar-app-title {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.sidebar-app-caption {
-  margin: 0.35rem 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.5;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-}
-
 .stat-card {
   text-align: center;
 }
@@ -102,20 +88,7 @@
 
 .view-nav-sidebar-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.35rem;
-}
-
-.view-nav-collapse-btn {
-  position: static !important;
-  flex: 0 0 auto;
-  z-index: 1;
-}
-
-.view-nav-sidebar-rail {
-  height: 100%;
-  padding: 0.5rem;
 }
 
 .view-sidebar-panel {
@@ -134,14 +107,6 @@
 
 .view-sidebar-panel-actions .v-btn {
   flex: 0 0 auto;
-}
-
-.view-nav-rail-shell {
-  height: 100%;
-}
-
-.view-nav-rail-logo .v-icon {
-  font-size: 20px;
 }
 
 .view-pattern-toggle {
@@ -696,8 +661,79 @@
     justify-content: flex-start;
   }
 }
+:root {
+  --app-window-titlebar-height: 36px;
+}
+
+/* Tauriの標準タイトルバーを消しているため、ここがウィンドウ最上部になります。 */
+.app-window-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--app-window-titlebar-height);
+  min-height: var(--app-window-titlebar-height);
+  padding: 0 0 0 0.55rem;
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.12);
+  background: rgb(var(--v-theme-surface));
+  user-select: none;
+}
+
+/* アプリ識別用の小さなアイコンです。ドラッグ中に画像だけ掴まないよう抑止します。 */
+.app-window-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-right: 0.25rem;
+  -webkit-user-drag: none;
+}
+
+/* メニュー項目は今後の拡張用です。現時点ではボタンとして見せるだけにしています。 */
+.app-window-menu-items {
+  display: flex;
+  align-items: center;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.app-window-menu-items .v-btn {
+  min-width: 0;
+  padding-inline: 0.65rem;
+  letter-spacing: 0;
+}
+
+/* タイトルバーの空白部分です。ここを掴むとウィンドウを移動できます。 */
+.app-window-drag-spacer {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 1rem;
+}
+
+/* 標準タイトルバーの代わりに、右端へウィンドウ操作ボタンを並べます。 */
+.app-window-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+
+/* OS標準ボタンに近い押しやすさを保つため、通常ボタンより横幅を広めに固定します。 */
+.app-window-control.v-btn {
+  width: 46px;
+  height: 100%;
+  min-width: 46px;
+  border-radius: 0;
+}
+
+/* 閉じるボタンだけは危険操作として、hover時にエラー色で目立たせます。 */
+.app-window-close:hover,
+.app-window-close:focus-visible {
+  background: rgb(var(--v-theme-error)) !important;
+  color: rgb(var(--v-theme-on-error)) !important;
+}
+
 .app-layout {
-  min-height: 100vh;
+  height: calc(100vh - var(--app-window-titlebar-height));
+  min-height: 0;
 }
 
 .topbar-shell {

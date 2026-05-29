@@ -4,19 +4,13 @@ import { useConfirmDialog } from "../composables/useConfirmDialog";
 import type { AppBootstrap, AppTableSummary } from "../types";
 
 const LABELS = {
-  openSidebar: "サイドメニューを開く",
-  closeSidebar: "サイドメニューを閉じる",
   createTable: "テーブルを作成",
-  workspaceCaption:
-    "テーブル設計とデータ編集をモードごとに切り替えて扱えるワークスペースです。",
   tableList: "テーブル一覧",
   createNew: "新規作成",
   emptyHint: "まだテーブルがありません。まずは「新規作成」から始めましょう。",
   tableActions: "テーブル操作",
   deleteTable: "削除"
 } as const;
-
-const RAIL_TOGGLE_GLYPH = "☰";
 
 const props = defineProps<{
   bootstrap: AppBootstrap | null;
@@ -25,7 +19,6 @@ const props = defineProps<{
   onDeleteTable: (tableId: number) => Promise<void>;
   onLoadTable: (tableId: number) => Promise<void>;
   onOpenCreateDialog: () => void;
-  onToggleSidebar: () => void;
 }>();
 
 const confirmDialog = useConfirmDialog();
@@ -58,24 +51,6 @@ async function handleDeleteTable(table: AppTableSummary) {
     <template v-if="rail">
       <div class="sidebar-rail-shell">
         <div class="sidebar-rail-actions">
-          <v-tooltip :text="LABELS.openSidebar" location="right">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                class="sidebar-rail-toggle"
-                :aria-label="LABELS.openSidebar"
-                @click="onToggleSidebar"
-              >
-                <span class="sidebar-rail-toggle-glyph" aria-hidden="true">
-                  {{ RAIL_TOGGLE_GLYPH }}
-                </span>
-              </button>
-            </template>
-          </v-tooltip>
-
-          <div class="sidebar-rail-logo" aria-hidden="true">DF</div>
-
           <v-tooltip :text="LABELS.createTable" location="right">
             <template #activator="{ props: tooltipProps }">
               <v-btn
@@ -124,39 +99,6 @@ async function handleDeleteTable(table: AppTableSummary) {
     </template>
 
     <template v-else>
-      <div class="sidebar-fixed-section">
-        <v-card
-          class="sidebar-card sidebar-brand-card"
-          color="surface"
-          variant="elevated"
-          border
-          rounded="xl"
-          elevation="2"
-        >
-          <div class="sidebar-brand-header">
-            <div class="sidebar-brand-copy">
-              <h1 class="sidebar-app-title">Datum Forge</h1>
-              <p class="sidebar-app-caption">
-                {{ LABELS.workspaceCaption }}
-              </p>
-            </div>
-            <v-tooltip :text="LABELS.closeSidebar" location="bottom">
-              <template #activator="{ props: tooltipProps }">
-                <v-btn
-                  v-bind="tooltipProps"
-                  icon="mdi-chevron-left"
-                  variant="text"
-                  size="small"
-                  class="sidebar-collapse-btn"
-                  :aria-label="LABELS.closeSidebar"
-                  @click="onToggleSidebar"
-                />
-              </template>
-            </v-tooltip>
-          </div>
-        </v-card>
-      </div>
-
       <div class="sidebar-scroll-section">
         <v-card
           class="sidebar-card sidebar-list-card"
@@ -168,14 +110,16 @@ async function handleDeleteTable(table: AppTableSummary) {
         >
           <div class="sidebar-list-head">
             <span class="sidebar-section-title">{{ LABELS.tableList }}</span>
-            <v-chip
-              size="small"
-              color="primary"
-              variant="tonal"
-              class="sidebar-count-chip"
-            >
-              {{ props.bootstrap?.tables.length ?? 0 }}
-            </v-chip>
+            <div class="sidebar-list-head-actions">
+              <v-chip
+                size="small"
+                color="primary"
+                variant="tonal"
+                class="sidebar-count-chip"
+              >
+                {{ props.bootstrap?.tables.length ?? 0 }}
+              </v-chip>
+            </div>
           </div>
 
           <div class="sidebar-list-actions">
