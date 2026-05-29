@@ -262,7 +262,7 @@
 }
 
 .view-layout-workspace:has(.view-binding-panel) {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
 }
 
 .view-unplaced-fields {
@@ -372,14 +372,27 @@
 }
 
 .view-binding-panel {
-  grid-template-rows: auto auto minmax(9rem, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(12rem, 1fr) auto auto;
+  gap: 0.55rem;
+  padding: 0.75rem;
 }
 
 .view-record-template-settings {
   display: grid;
-  gap: 0.7rem;
-  padding-bottom: 0.75rem;
+  gap: 0.5rem;
+  padding-bottom: 0.55rem;
   border-bottom: 1px solid rgba(var(--v-theme-outline), 0.16);
+}
+
+.view-record-template-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.view-record-template-control-row .v-btn {
+  white-space: nowrap;
 }
 
 .view-record-template-heading {
@@ -479,10 +492,16 @@
 .view-binding-list {
   display: grid;
   align-content: start;
-  gap: 0.75rem;
+  gap: 0.55rem;
   min-height: 0;
   overflow-y: auto;
   padding: 0.05rem 0.15rem 0.35rem 0;
+}
+
+@media (max-width: 1180px) {
+  .view-layout-workspace:has(.view-binding-panel) {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  }
 }
 
 .view-style-inspector-heading {

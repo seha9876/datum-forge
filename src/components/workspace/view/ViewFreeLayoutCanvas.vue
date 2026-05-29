@@ -1986,35 +1986,37 @@ function layoutToTemplateCard(
               {{ recordTemplateSourceLabel }}
             </v-chip>
           </div>
-          <v-select
-            :items="recordTemplateItems"
-            :model-value="
-              selectedItem?.type === 'tableRecord'
-                ? (selectedItem.recordTemplateId ?? null)
-                : null
-            "
-            item-title="title"
-            item-value="value"
-            label="個別テンプレート"
-            variant="outlined"
-            density="compact"
-            hide-details
-            :disabled="saving || recordTemplateItems.length === 0"
-            @update:model-value="assignRecordTemplate"
-          />
-          <v-btn
-            color="primary"
-            variant="tonal"
-            size="small"
-            :disabled="
-              saving ||
-              selectedItem?.type !== 'tableRecord' ||
-              !selectedItem.recordTemplateId
-            "
-            @click="clearRecordTemplate"
-          >
-            個別設定を解除
-          </v-btn>
+          <div class="view-record-template-control-row">
+            <v-select
+              :items="recordTemplateItems"
+              :model-value="
+                selectedItem?.type === 'tableRecord'
+                  ? (selectedItem.recordTemplateId ?? null)
+                  : null
+              "
+              item-title="title"
+              item-value="value"
+              label="個別テンプレート"
+              variant="outlined"
+              density="compact"
+              hide-details
+              :disabled="saving || recordTemplateItems.length === 0"
+              @update:model-value="assignRecordTemplate"
+            />
+            <v-btn
+              color="primary"
+              variant="tonal"
+              size="small"
+              :disabled="
+                saving ||
+                selectedItem?.type !== 'tableRecord' ||
+                !selectedItem.recordTemplateId
+              "
+              @click="clearRecordTemplate"
+            >
+              個別設定を解除
+            </v-btn>
+          </div>
         </div>
         <div class="view-binding-setup-copy">
           <strong>カードごとの表示項目</strong>
