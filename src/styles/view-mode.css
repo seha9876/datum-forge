@@ -413,10 +413,13 @@
   color: var(--text);
 }
 
-.view-record-template-heading span {
+.view-record-template-source-chip {
+  max-width: min(100%, 15rem);
+}
+
+.view-record-template-source-chip .v-chip__content {
+  display: block;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 0.86rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

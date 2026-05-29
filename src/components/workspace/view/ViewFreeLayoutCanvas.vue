@@ -340,6 +340,17 @@ const recordTemplateSourceLabel = computed(() => {
   }
   return "未設定";
 });
+const recordTemplateSourceChipLabel = computed(() => {
+  if (recordTemplateSource.value === "folder" && props.activeTemplateName) {
+    return `${recordTemplateSourceLabel.value}（${props.activeTemplateName}）`;
+  }
+  return recordTemplateSourceLabel.value;
+});
+const recordTemplateTooltipText = computed(() =>
+  recordTemplateSource.value === "folder" && props.activeTemplateName
+    ? props.activeTemplateName
+    : ""
+);
 const recordTemplateSourceColor = computed(() => {
   if (recordTemplateSource.value === "record") {
     return "primary";
@@ -349,9 +360,6 @@ const recordTemplateSourceColor = computed(() => {
   }
   return "warning";
 });
-const currentTemplateName = computed(
-  () => props.activeTemplateName ?? "未設定"
-);
 const templatePreviewRecordItems = computed(() =>
   props.tableSections.flatMap((section) =>
     section.records.map((record) => ({
@@ -1976,14 +1984,32 @@ function layoutToTemplateCard(
           <div class="view-record-template-heading">
             <div>
               <strong>適用中テンプレート</strong>
-              <span>{{ currentTemplateName }}</span>
             </div>
+            <v-tooltip
+              v-if="recordTemplateTooltipText"
+              :text="recordTemplateTooltipText"
+              location="bottom"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <v-chip
+                  v-bind="tooltipProps"
+                  class="view-record-template-source-chip"
+                  size="small"
+                  :color="recordTemplateSourceColor"
+                  variant="tonal"
+                >
+                  {{ recordTemplateSourceChipLabel }}
+                </v-chip>
+              </template>
+            </v-tooltip>
             <v-chip
+              v-else
+              class="view-record-template-source-chip"
               size="small"
               :color="recordTemplateSourceColor"
               variant="tonal"
             >
-              {{ recordTemplateSourceLabel }}
+              {{ recordTemplateSourceChipLabel }}
             </v-chip>
           </div>
           <div class="view-record-template-control-row">
