@@ -645,8 +645,7 @@ async function toggleBindingEditor() {
     if (hasUnsavedBindingChanges.value) {
       const confirmed = await confirmDialog.open({
         title: "紐付けの変更を破棄",
-        message:
-          "紐付けの変更が保存されていません。変更を破棄して閉じますか？",
+        message: "紐付けの変更が保存されていません。変更を破棄して閉じますか？",
         confirmText: "破棄して閉じる",
         color: "warning"
       });
