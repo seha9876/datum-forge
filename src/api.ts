@@ -30,6 +30,7 @@ import type {
   RecordTagBundle,
   RecordTagGroup,
   RecordTagGroupLinkPayload,
+  ReorderViewNavFolderRecordsPayload,
   RemoveViewNavFolderRecordPayload,
   RenameViewLayoutTemplatePayload,
   ReorderColumnsPayload,
@@ -180,6 +181,16 @@ export const api = {
     invoke<ViewNavFolderRecord[]>("add_view_nav_folder_records", { payload }),
   removeViewNavFolderRecord: (payload: RemoveViewNavFolderRecordPayload) =>
     invoke<void>("remove_view_nav_folder_record", { payload }),
+  /**
+   * 閲覧目次で、指定フォルダー内に登録されたレコードの表示順を保存します。
+   *
+   * @param payload フォルダーIDと並び替え後のフォルダー内レコードID一覧
+   * @returns 保存後のフォルダー内レコード一覧
+   */
+  reorderViewNavFolderRecords: (payload: ReorderViewNavFolderRecordsPayload) =>
+    invoke<ViewNavFolderRecord[]>("reorder_view_nav_folder_records", {
+      payload
+    }),
   getViewTableSections: () =>
     invoke<ViewTableSection[]>("get_view_table_sections"),
   listAllFolderLayoutTemplates: () =>

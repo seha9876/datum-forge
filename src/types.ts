@@ -371,6 +371,12 @@ export interface RemoveViewNavFolderRecordPayload {
   folderRecordId: number;
 }
 
+/** 閲覧目次で、指定フォルダー内レコードを保存したい順番に並べた payload です。 */
+export interface ReorderViewNavFolderRecordsPayload {
+  folderId: number;
+  orderedFolderRecordIds: number[];
+}
+
 export type ViewSelection =
   | {
       type: "tableRecord";

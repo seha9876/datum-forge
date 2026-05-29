@@ -670,6 +670,28 @@ export function useViewNavigation() {
     }
   }
 
+  async function reorderFolderRecords(
+    folderId: number,
+    records: ViewNavFolderRecord[]
+  ) {
+    // 左の閲覧目次で確定した順序を保存し、返却された sortOrder をローカル状態へ反映します。
+    error.value = "";
+
+    try {
+      const updatedRecords = await api.reorderViewNavFolderRecords({
+        folderId,
+        orderedFolderRecordIds: records.map((record) => record.id)
+      });
+      mergeFolderRecords(updatedRecords);
+    } catch (reorderError) {
+      error.value =
+        reorderError instanceof Error
+          ? reorderError.message
+          : String(reorderError);
+      throw reorderError;
+    }
+  }
+
   function isFolderExpanded(folderId: number) {
     return expandedFolderIds.value.includes(folderId);
   }
@@ -720,6 +742,7 @@ export function useViewNavigation() {
     tableSections,
     addFolderRecords,
     removeFolderRecord,
+    reorderFolderRecords,
     toggleFolder,
     refresh: initialize
   };

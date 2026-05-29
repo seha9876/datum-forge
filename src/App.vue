@@ -119,6 +119,7 @@ const {
   toggleFolder,
   addFolderRecords,
   removeFolderRecord,
+  reorderFolderRecords,
   refresh: refreshViewNavigation
 } = useViewNavigation();
 const {
@@ -359,6 +360,7 @@ onMounted(() => {
             :on-delete-folder="deleteFolder"
             :on-duplicate-layout-template="duplicateLayoutTemplate"
             :on-rename-layout-template="renameLayoutTemplate"
+            :on-reorder-folder-records="reorderFolderRecords"
             :on-select-folder-record="selectFolderRecord"
             :on-select-folder="selectFolder"
             :on-select-layout-template="selectLayoutTemplate"

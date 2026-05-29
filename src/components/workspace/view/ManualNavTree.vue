@@ -18,6 +18,10 @@ const props = defineProps<{
   nodes: ViewNavTreeNode[];
   onCreateFolder: (parentId: number | null, name: string) => Promise<void>;
   onDeleteFolder: (node: ViewNavTreeNode) => Promise<void>;
+  onReorderFolderRecords: (
+    folderId: number,
+    records: ViewNavFolderRecord[]
+  ) => Promise<void>;
   onSelectFolder: (node: ViewNavTreeNode) => void;
   onSelectFolderRecord: (record: ViewNavFolderRecord) => void;
   onToggleFolder: (folderId: number) => void;
@@ -49,7 +53,7 @@ type ManualTreeItem =
       record: ViewNavFolderRecord;
     };
 
-/** 実験用ドラッグ中に、マウスへ追従させるプレビュー表示の情報です。 */
+/** 目次上でドラッグ中の項目を、マウスへ追従させるプレビュー表示の情報です。 */
 interface ManualTreeDragPreview {
   id: string;
   kind: ManualTreeItem["kind"];
@@ -64,8 +68,16 @@ interface ManualTreePendingDrag {
   startY: number;
 }
 
+/** ドラッグ中のレコードが、どのレコードの前後へ入るかを示す表示状態です。 */
+interface ManualTreeDropIndicator {
+  targetItemId: string;
+  position: "before" | "after";
+}
+
 /** クリックとドラッグを見分けるため、マウスがこの距離以上動いたらドラッグ扱いにします。 */
 const DRAG_START_DISTANCE = 4;
+/** Vuetify が各 tree item に付ける行要素です。選択時の背景色もこの行に出ます。 */
+const MANUAL_TREE_ROW_SELECTOR = ".v-list-item";
 
 /** ルートフォルダ作成フォームを表示しているかどうかです。 */
 const isAddingRoot = ref(false);
@@ -75,11 +87,13 @@ const rootFolderName = ref("");
 const addingParentId = ref<number | null>(null);
 /** 子フォルダ名を保存する前の一時入力値です。 */
 const childFolderName = ref("");
-/** 実験用ドラッグ中の tree item ID です。並び順や階層は変更せず、見た目の強調にだけ使います。 */
+/** ドラッグ中の tree item ID です。行の見た目の強調に使います。 */
 const draggingItemId = ref<string | null>(null);
-/** 実験用ドラッグ中に表示する、独自の浮遊プレビューです。 */
+/** ドラッグ中に表示する、独自の浮遊プレビューです。 */
 const dragPreview = ref<ManualTreeDragPreview | null>(null);
 const dragPreviewElement = ref<HTMLElement | null>(null);
+/** 有効なレコード並び替え先に表示する、挿入位置の強調表示です。 */
+const dropIndicator = ref<ManualTreeDropIndicator | null>(null);
 /** まだドラッグ開始距離に達していない、押下中の候補情報です。 */
 const pendingDrag = ref<ManualTreePendingDrag | null>(null);
 let latestPreviewPoint = { x: 0, y: 0 };
@@ -282,6 +296,105 @@ function findRecordItem(
   return null;
 }
 
+function findFolderNodeById(
+  nodes: ViewNavTreeNode[],
+  folderId: number
+): ViewNavTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === folderId) {
+      return node;
+    }
+
+    const childMatch = findFolderNodeById(node.children, folderId);
+    if (childMatch) {
+      return childMatch;
+    }
+  }
+
+  return null;
+}
+
+/** イベント発生元やポインター直下の DOM から、Vuetify の tree item 行を探します。 */
+function findManualTreeRowElement(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  return target.closest<HTMLElement>(MANUAL_TREE_ROW_SELECTOR);
+}
+
+/** tree item 行の中に残した data 属性から、対応するフォルダー/レコード item を取得します。 */
+function findItemFromTreeRow(row: HTMLElement) {
+  const marker = row.querySelector<HTMLElement>("[data-manual-tree-item-id]");
+  const itemId = marker?.dataset.manualTreeItemId;
+  if (!itemId) {
+    return null;
+  }
+
+  return (
+    findFolderItem(treeItems.value, itemId) ??
+    findRecordItem(treeItems.value, itemId)
+  );
+}
+
+/** ボタンや入力欄の操作は、tree item 行のドラッグ開始として扱わないようにします。 */
+function shouldIgnorePointerDragStart(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return true;
+  }
+
+  const interactiveElement = target.closest<HTMLElement>(
+    "button, a, input, textarea, select, [contenteditable='true'], .manual-tree-actions"
+  );
+  if (interactiveElement) {
+    return true;
+  }
+
+  const roleButton = target.closest<HTMLElement>("[role='button']");
+  return Boolean(roleButton && !roleButton.matches(MANUAL_TREE_ROW_SELECTOR));
+}
+
+/**
+ * 現在のポインター位置から、同じフォルダー内レコードへの有効な挿入先を求めます。
+ * tooltip の activator 構造は変えず、Vuetify の tree item 行全体を判定対象にします。
+ */
+function getRecordDropTarget(event: PointerEvent) {
+  const pending = pendingDrag.value;
+  // フォルダー自体のドラッグは保存対象外です。並び替えるのはフォルダー内レコードだけです。
+  if (!pending || pending.item.kind !== "record") {
+    return null;
+  }
+
+  // elementFromPoint でマウス直下の DOM を拾い、選択背景が付く tree item 行まで広げて調べます。
+  const targetRowElement = findManualTreeRowElement(
+    document.elementFromPoint(event.clientX, event.clientY)
+  );
+  const targetMarker = targetRowElement?.querySelector<HTMLElement>(
+    "[data-manual-record-item-id]"
+  );
+  const targetItemId = targetMarker?.dataset.manualRecordItemId;
+  // 自分自身へのドロップは順序が変わらないため、候補にしません。
+  if (!targetRowElement || !targetItemId || targetItemId === pending.item.id) {
+    return null;
+  }
+
+  const targetItem = findRecordItem(treeItems.value, targetItemId);
+  // 別フォルダーのレコードへは移動させず、同じフォルダー内だけを並び替えます。
+  if (
+    !targetItem ||
+    targetItem.record.folderId !== pending.item.record.folderId
+  ) {
+    return null;
+  }
+
+  // 対象レコード行の上半分なら前、下半分なら後ろに入れるための判定です。
+  const targetRect = targetRowElement.getBoundingClientRect();
+  const position =
+    event.clientY > targetRect.top + targetRect.height / 2 ? "after" : "before";
+
+  return { targetElement: targetRowElement, targetItem, position } as const;
+}
+
 /** ルートフォルダ作成フォームを開閉します。閉じるときは入力値も捨てます。 */
 function toggleRootForm() {
   isAddingRoot.value = !isAddingRoot.value;
@@ -407,8 +520,8 @@ function selectActivatedTreeItem(nextActivated: unknown[]) {
 }
 
 /**
- * 実験用ドラッグの候補を記録します。
- * すぐにドラッグ扱いにすると通常クリックの選択を邪魔するため、移動距離を見てからプレビューを出します。
+ * requestAnimationFrame で独自プレビューの座標を反映します。
+ * pointermove ごとに直接 DOM 更新せず、描画タイミングへ寄せて追従を安定させます。
  */
 function applyDragPreviewPosition() {
   previewAnimationFrame = null;
@@ -423,6 +536,7 @@ function applyDragPreviewPosition() {
 }
 
 function scheduleDragPreviewPosition() {
+  // すでに次フレームの更新予約がある場合は、重複予約せず最新座標だけを使います。
   if (previewAnimationFrame !== null) {
     return;
   }
@@ -433,6 +547,7 @@ function scheduleDragPreviewPosition() {
 }
 
 function cancelDragPreviewPosition() {
+  // ドラッグ終了時に、まだ実行されていないプレビュー更新予約を取り消します。
   if (previewAnimationFrame === null) {
     return;
   }
@@ -441,16 +556,28 @@ function cancelDragPreviewPosition() {
   previewAnimationFrame = null;
 }
 
-function beginExperimentalPointerDrag(
-  event: PointerEvent,
-  item: ManualTreeItem
-) {
+/**
+ * ドラッグの候補を記録します。
+ * すぐにドラッグ扱いにすると通常クリックの選択を邪魔するため、移動距離を見てからプレビューを出します。
+ */
+function beginExperimentalPointerDrag(event: PointerEvent) {
+  // 左クリック以外はドラッグ開始として扱いません。
   if (event.button !== 0) {
     return;
   }
 
-  event.preventDefault();
+  if (shouldIgnorePointerDragStart(event.target)) {
+    return;
+  }
 
+  const rowElement = findManualTreeRowElement(event.target);
+  const item = rowElement ? findItemFromTreeRow(rowElement) : null;
+  if (!item) {
+    return;
+  }
+
+  // ここではまだドラッグ確定にせず、押し始めた位置だけを保存します。
+  // pointermove で一定距離を超えたら、クリックではなくドラッグとして扱います。
   pendingDrag.value = {
     item,
     pointerId: event.pointerId,
@@ -460,8 +587,59 @@ function beginExperimentalPointerDrag(
 
   const target = event.currentTarget;
   if (target instanceof HTMLElement) {
+    // マウスが要素外へ少し出ても pointermove/up を受け取れるようにします。
     target.setPointerCapture(event.pointerId);
   }
+}
+
+/**
+ * ドロップ時に、同じフォルダー内のレコード順を before/after 判定どおりに作り直して保存します。
+ * フォルダー行や別フォルダーへのドロップは保存対象にしません。
+ */
+async function reorderDraggedRecord(event: PointerEvent) {
+  const pending = pendingDrag.value;
+  // プレビューが出ていない場合は、クリック扱いで終わったものとして保存しません。
+  if (!pending || !dragPreview.value || pending.item.kind !== "record") {
+    return;
+  }
+
+  const sourceItem = pending.item;
+  const dropTarget = getRecordDropTarget(event);
+  // 有効な挿入先がなければ、順序は変えません。
+  if (!dropTarget) {
+    return;
+  }
+
+  const folder = findFolderNodeById(props.nodes, sourceItem.record.folderId);
+  if (!folder) {
+    return;
+  }
+
+  const sourceIndex = folder.records.findIndex(
+    (record) => record.id === sourceItem.record.id
+  );
+  const targetIndex = folder.records.findIndex(
+    (record) => record.id === dropTarget.targetItem.record.id
+  );
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return;
+  }
+
+  // props.nodes は親の状態なので直接変更せず、保存用の新しい配列を作ります。
+  const nextRecords = [...folder.records];
+  const [movedRecord] = nextRecords.splice(sourceIndex, 1);
+  // 元の位置から取り除いた後は、後ろ方向へ動かすと targetIndex が 1 つ前にずれます。
+  const adjustedTargetIndex =
+    sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+
+  nextRecords.splice(
+    adjustedTargetIndex + (dropTarget.position === "after" ? 1 : 0),
+    0,
+    movedRecord
+  );
+
+  // 保存成功後の sortOrder 同期は、親から渡された処理側で行います。
+  await props.onReorderFolderRecords(folder.id, nextRecords);
 }
 
 /**
@@ -470,6 +648,7 @@ function beginExperimentalPointerDrag(
  */
 function moveExperimentalPointerDrag(event: PointerEvent) {
   const pending = pendingDrag.value;
+  // 別の pointerId のイベントは、今回のドラッグ操作ではないため無視します。
   if (!pending || pending.pointerId !== event.pointerId) {
     return;
   }
@@ -478,6 +657,7 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
   const movedY = event.clientY - pending.startY;
   const movedDistance = Math.hypot(movedX, movedY);
 
+  // 押下位置から少ししか動いていない間は、通常クリックの可能性があるので何もしません。
   if (!dragPreview.value && movedDistance < DRAG_START_DISTANCE) {
     return;
   }
@@ -485,6 +665,7 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
   latestPreviewPoint = { x: event.clientX, y: event.clientY };
 
   if (!dragPreview.value) {
+    // しきい値を超えた最初の move で、ドラッグ中の見た目へ切り替えます。
     draggingItemId.value = pending.item.id;
     dragPreview.value = {
       id: pending.item.id,
@@ -496,25 +677,42 @@ function moveExperimentalPointerDrag(event: PointerEvent) {
     scheduleDragPreviewPosition();
   }
 
+  // マウス直下が有効な挿入先なら、対象レコード行の上端/下端へ線を出します。
+  const dropTarget = getRecordDropTarget(event);
+  dropIndicator.value = dropTarget
+    ? {
+        targetItemId: dropTarget.targetItem.id,
+        position: dropTarget.position
+      }
+    : null;
+
   event.preventDefault();
 }
 
-/** 実験用ドラッグまたはドラッグ候補が終わったら、見た目用の状態だけを解除します。 */
+/** ドラッグまたはドラッグ候補が終わったら、並び替え保存を試みてから表示状態を解除します。 */
 function endExperimentalPointerDrag(event?: PointerEvent) {
+  if (event) {
+    // pointerup 時点のマウス位置で、最後に見えていた挿入先と同じ判定を使って保存します。
+    void reorderDraggedRecord(event).catch(() => undefined);
+  }
+
   if (event) {
     const target = event.currentTarget;
     if (
       target instanceof HTMLElement &&
       target.hasPointerCapture(event.pointerId)
     ) {
+      // setPointerCapture した要素を解放し、次の操作へ影響しないようにします。
       target.releasePointerCapture(event.pointerId);
     }
   }
 
+  // ドラッグ表示とドロップ候補を必ず消して、通常表示へ戻します。
   pendingDrag.value = null;
   draggingItemId.value = null;
   dragPreview.value = null;
   dragPreviewElement.value = null;
+  dropIndicator.value = null;
   cancelDragPreviewPosition();
 }
 </script>
@@ -582,6 +780,10 @@ function endExperimentalPointerDrag(event?: PointerEvent) {
       @update:opened="updateOpenedFolders"
       @update:activated="selectActivatedTreeItem"
       @click:select="selectTreeItem"
+      @pointerdown.capture="beginExperimentalPointerDrag"
+      @pointermove="moveExperimentalPointerDrag"
+      @pointerup="endExperimentalPointerDrag"
+      @pointercancel="endExperimentalPointerDrag"
     >
       <!-- 行の左側に、フォルダかレコードか分かるアイコンを出します。 -->
       <template #prepend="{ item }">
@@ -600,10 +802,7 @@ function endExperimentalPointerDrag(event?: PointerEvent) {
             <span
               v-bind="tooltipProps"
               class="manual-tree-drag-handle"
-              @pointerdown="beginExperimentalPointerDrag($event, item)"
-              @pointermove="moveExperimentalPointerDrag"
-              @pointerup="endExperimentalPointerDrag"
-              @pointercancel="endExperimentalPointerDrag"
+              :data-manual-tree-item-id="item.id"
             >
               {{ item.title }}
             </span>
@@ -614,10 +813,16 @@ function endExperimentalPointerDrag(event?: PointerEvent) {
             <span
               v-bind="tooltipProps"
               class="manual-tree-drag-handle"
-              @pointerdown="beginExperimentalPointerDrag($event, item)"
-              @pointermove="moveExperimentalPointerDrag"
-              @pointerup="endExperimentalPointerDrag"
-              @pointercancel="endExperimentalPointerDrag"
+              :class="{
+                'manual-tree-drop-before':
+                  dropIndicator?.targetItemId === item.id &&
+                  dropIndicator.position === 'before',
+                'manual-tree-drop-after':
+                  dropIndicator?.targetItemId === item.id &&
+                  dropIndicator.position === 'after'
+              }"
+              :data-manual-tree-item-id="item.id"
+              :data-manual-record-item-id="item.id"
             >
               <span v-if="showRecordIds"> #{{ item.record.recordId }} </span>
               {{ item.title }}
@@ -704,7 +909,7 @@ function endExperimentalPointerDrag(event?: PointerEvent) {
       保存済みフォルダはまだありません。まずはルート直下に追加してください。
     </p>
 
-    <!-- 実験用ドラッグ中だけ、ブラウザ標準ゴーストの代わりに小さなプレビューを表示します。 -->
+    <!-- ドラッグ中だけ、ブラウザ標準ゴーストの代わりに小さなプレビューを表示します。 -->
     <Teleport to="body">
       <div
         v-if="dragPreview"

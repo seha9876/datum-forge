@@ -399,6 +399,14 @@ pub struct RemoveViewNavFolderRecordPayload {
     pub folder_record_id: i64,
 }
 
+/// 閲覧目次で、指定フォルダー内レコードを保存したい順番に並べた payload です。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderViewNavFolderRecordsPayload {
+    pub folder_id: i64,
+    pub ordered_folder_record_ids: Vec<i64>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveRecordTagGroupPayload {
@@ -2128,6 +2136,60 @@ impl Db {
         Ok(())
     }
 
+    pub fn reorder_view_nav_folder_records(
+        &self,
+        payload: ReorderViewNavFolderRecordsPayload,
+    ) -> Result<Vec<ViewNavFolderRecord>, DbError> {
+        // フォルダー内の全レコードが一度ずつ含まれる順序だけを受け付け、sort_order を再採番します。
+        self.ensure_view_nav_folder(payload.folder_id)?;
+
+        // 既存のフォルダー内レコード集合と、フロントから届いた ID 集合が完全一致するか確認します。
+        // これにより、別フォルダーの ID 混入や一部欠落、重複指定をここで止めます。
+        let current_ids = self.list_view_nav_folder_record_ids(payload.folder_id)?;
+        let current_id_set: HashSet<i64> = current_ids.iter().copied().collect();
+        let ordered_id_set: HashSet<i64> =
+            payload.ordered_folder_record_ids.iter().copied().collect();
+
+        if ordered_id_set.len() != payload.ordered_folder_record_ids.len()
+            || current_id_set != ordered_id_set
+        {
+            return Err(DbError::InvalidInput(
+                "folder record order must include all records in the folder exactly once".into(),
+            ));
+        }
+
+        // 途中で失敗したときに順序が半端に保存されないよう、更新は 1 トランザクションで行います。
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "
+                UPDATE view_nav_folder_records
+                SET sort_order = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND folder_id = ?
+                ",
+            )?;
+
+            for (index, folder_record_id) in payload.ordered_folder_record_ids.iter().enumerate() {
+                // sort_order は表示順として扱いやすいよう、0 始まりではなく 1 始まりにそろえます。
+                let affected = stmt.execute(params![
+                    index as i64 + 1,
+                    folder_record_id,
+                    payload.folder_id
+                ])?;
+
+                if affected == 0 {
+                    return Err(DbError::InvalidInput(
+                        "folder record does not exist in the target folder".into(),
+                    ));
+                }
+            }
+        }
+        tx.commit()?;
+
+        // 保存後の sort_order をフロント状態へ同期できるよう、更新済みの一覧を返します。
+        self.list_view_nav_folder_records_for_folder(payload.folder_id)
+    }
+
     pub fn list_record_tags(&self) -> Result<RecordTagBundle, DbError> {
         Ok(RecordTagBundle {
             groups: self.list_record_tag_groups()?,
@@ -3776,6 +3838,66 @@ impl Db {
                 },
             )
             .map_err(DbError::from)
+    }
+
+    fn list_view_nav_folder_record_ids(&self, folder_id: i64) -> Result<Vec<i64>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id
+            FROM view_nav_folder_records
+            WHERE folder_id = ?
+            ORDER BY sort_order, id
+            ",
+        )?;
+
+        let ids = stmt
+            .query_map([folder_id], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DbError::from)?;
+
+        Ok(ids)
+    }
+
+    fn list_view_nav_folder_records_for_folder(
+        &self,
+        folder_id: i64,
+    ) -> Result<Vec<ViewNavFolderRecord>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT
+              r.id,
+              r.folder_id,
+              r.table_id,
+              t.table_name,
+              t.display_name,
+              r.record_id,
+              r.record_label,
+              r.sort_order,
+              r.created_at,
+              r.updated_at
+            FROM view_nav_folder_records r
+            JOIN app_tables t ON t.id = r.table_id
+            WHERE r.folder_id = ?
+            ORDER BY r.sort_order, r.id
+            ",
+        )?;
+
+        let rows = stmt.query_map([folder_id], |row| {
+            Ok(ViewNavFolderRecord {
+                id: row.get(0)?,
+                folder_id: row.get(1)?,
+                table_id: row.get(2)?,
+                table_name: row.get(3)?,
+                table_display_name: row.get(4)?,
+                record_id: row.get(5)?,
+                record_label: row.get(6)?,
+                sort_order: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
     }
 
     fn list_record_tag_groups(&self) -> Result<Vec<RecordTagGroup>, DbError> {
