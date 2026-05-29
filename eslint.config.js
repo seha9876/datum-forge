@@ -31,9 +31,12 @@ export default [
         window: "readonly",
         document: "readonly",
         console: "readonly",
+        Element: "readonly",
         Event: "readonly",
+        EventTarget: "readonly",
         HTMLElement: "readonly",
         HTMLSelectElement: "readonly",
+        MouseEvent: "readonly",
         PointerEvent: "readonly"
       }
     },

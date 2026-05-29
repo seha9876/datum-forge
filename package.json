@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "fix": "prettier . --write && eslint . --fix",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "preview": "vite preview",
