@@ -12,7 +12,6 @@
 }
 
 .sidebar-card,
-.mode-tabs-card,
 .empty-card {
   backdrop-filter: blur(12px);
 }
@@ -693,6 +692,7 @@
   align-items: center;
   gap: 0.05rem;
   min-width: 0;
+  font-size: 0.82rem;
 }
 
 .app-window-menu-items .v-btn {

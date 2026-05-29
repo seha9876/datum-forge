@@ -1,21 +1,15 @@
 ﻿<script setup lang="ts">
 import type { WorkspaceMode } from "../../composables/useWorkspaceMode";
 
-withDefaults(
-  defineProps<{
-    modelValue: WorkspaceMode;
-    variant?: "card" | "titlebar";
-  }>(),
-  {
-    variant: "card"
-  }
-);
+defineProps<{
+  modelValue: WorkspaceMode;
+}>();
 
 const emit = defineEmits<{
   "update:modelValue": [WorkspaceMode];
 }>();
 
-/** タブ描画に使うワークスペースモード定義です。 */
+/** カスタムタイトルバーに表示するワークスペースモード定義です。 */
 const modes: Array<{
   id: WorkspaceMode;
   label: string;
@@ -134,41 +128,8 @@ function handleTabsWheel(event: WheelLikeEvent) {
 </script>
 
 <template>
-  <!-- ワークスペース全体の表示モードを切り替えるタブ群です。 -->
-  <v-card
-    v-if="variant === 'card'"
-    class="mode-tabs-card"
-    color="surface"
-    variant="elevated"
-    border
-    rounded="xl"
-    elevation="2"
-    @wheel="handleTabsWheel"
-  >
-    <v-tabs
-      :model-value="modelValue"
-      color="primary"
-      align-tabs="start"
-      density="comfortable"
-      @update:model-value="emit('update:modelValue', $event as WorkspaceMode)"
-    >
-      <!-- モード定義に基づいてタブを動的に描画します。 -->
-      <v-tab
-        v-for="mode in modes"
-        :key="mode.id"
-        :value="mode.id"
-        :prepend-icon="mode.icon"
-      >
-        {{ mode.label }}
-      </v-tab>
-    </v-tabs>
-  </v-card>
-
-  <div
-    v-else
-    class="mode-tabs-card mode-tabs-titlebar"
-    @wheel="handleTabsWheel"
-  >
+  <!-- カスタムタイトルバー内でワークスペース全体の表示モードを切り替えます。 -->
+  <div class="mode-tabs-titlebar" @wheel="handleTabsWheel">
     <v-tabs
       :model-value="modelValue"
       color="primary"

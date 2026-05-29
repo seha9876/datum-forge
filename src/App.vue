@@ -446,19 +446,19 @@ onMounted(() => {
       </v-tooltip>
 
       <nav class="app-window-menu-items" aria-label="アプリケーションメニュー">
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ファイル
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           編集
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           表示
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ウィンドウ
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="small">
+        <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ヘルプ
         </v-btn>
       </nav>
@@ -466,7 +466,6 @@ onMounted(() => {
       <WorkspaceModeTabs
         v-model="currentMode"
         class="app-window-mode-tabs app-window-no-drag"
-        variant="titlebar"
       />
 
       <div class="app-window-drag-spacer" aria-hidden="true" />
