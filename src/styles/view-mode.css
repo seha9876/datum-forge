@@ -371,6 +371,43 @@
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
+.view-binding-panel {
+  grid-template-rows: auto auto minmax(9rem, 1fr) auto auto;
+}
+
+.view-record-template-settings {
+  display: grid;
+  gap: 0.7rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.16);
+}
+
+.view-record-template-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.view-record-template-heading > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.view-record-template-heading strong {
+  color: var(--text);
+}
+
+.view-record-template-heading span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .view-template-preview-bindings {
   display: grid;
   gap: 0;
@@ -445,7 +482,7 @@
   gap: 0.75rem;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 0.1rem;
+  padding: 0.05rem 0.15rem 0.35rem 0;
 }
 
 .view-style-inspector-heading {

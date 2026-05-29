@@ -40,6 +40,8 @@ defineProps<{
   editingRecordId: number | null;
   error: string;
   layoutCardItems: ViewLayoutCardItem[];
+  activeLayoutTemplateId: number | null;
+  activeLayoutTemplateName: string | null;
   fieldTypes: FieldType[];
   fieldTypeLabel: (fieldType: FieldType) => string;
   fieldTypeMeta: (column: AppColumn) => string;
@@ -95,6 +97,11 @@ defineProps<{
     folderId: number,
     templateId: number
   ) => Promise<void>;
+  onAssignRecordLayoutTemplate: (
+    folderRecordId: number,
+    templateId: number
+  ) => Promise<void>;
+  onClearRecordLayoutTemplate: (folderRecordId: number) => Promise<void>;
   onCreateFolderLayoutTemplate: (
     folderId: number | null,
     name: string
@@ -192,6 +199,8 @@ defineProps<{
         :error="viewError"
         :on-clear-error="onClearViewError"
         :layout-card-items="layoutCardItems"
+        :active-layout-template-id="activeLayoutTemplateId"
+        :active-layout-template-name="activeLayoutTemplateName"
         :folder-count="viewFolderCount"
         :layout-saving="viewLayoutSaving"
         :loading="viewLoading"
@@ -199,9 +208,11 @@ defineProps<{
         :selected-record-tags="selectedRecordTags"
         :on-add-folder-records="onAddFolderRecords"
         :on-assign-folder-layout-template="onAssignFolderLayoutTemplate"
+        :on-assign-record-layout-template="onAssignRecordLayoutTemplate"
         :on-attach-existing-tag="onAttachExistingTag"
         :on-create-folder="onCreateFolder"
         :on-create-folder-layout-template="onCreateFolderLayoutTemplate"
+        :on-clear-record-layout-template="onClearRecordLayoutTemplate"
         :on-clear-template-preview="onClearTemplatePreview"
         :on-open-mode-help="onOpenModeHelp"
         :on-create-and-attach-tag="onCreateAndAttachTag"

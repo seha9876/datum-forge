@@ -70,6 +70,7 @@ export interface ViewNavFolderRecord {
   tableDisplayName: string;
   recordId: number;
   recordLabel: string;
+  recordTemplateId: number | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -175,8 +176,8 @@ export interface ViewLayoutTemplateCard {
 
 export interface ResolvedViewFieldLayout {
   templates: ViewLayoutTemplate[];
-  activeTemplateId: number;
-  activeTemplateName: string;
+  activeTemplateId: number | null;
+  activeTemplateName: string | null;
   items: ViewLayoutCardItem[];
 }
 
@@ -314,6 +315,16 @@ export interface GetResolvedViewFieldLayoutPayload {
   tableId: number;
   recordId: number;
   folderId?: number | null;
+  folderRecordId?: number | null;
+}
+
+export interface AssignViewLayoutRecordTemplatePayload {
+  folderRecordId: number;
+  templateId: number;
+}
+
+export interface ClearViewLayoutRecordTemplatePayload {
+  folderRecordId: number;
 }
 
 export interface GetViewLayoutTemplateCardsPayload {
@@ -386,6 +397,8 @@ export type ViewSelection =
       recordId: number;
       recordLabel: string;
       folderId?: number | null;
+      folderRecordId?: number | null;
+      recordTemplateId?: number | null;
     }
   | {
       type: "folder";

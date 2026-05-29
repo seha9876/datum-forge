@@ -168,6 +168,7 @@ pub struct ViewNavFolderRecord {
     pub table_display_name: String,
     pub record_id: i64,
     pub record_label: String,
+    pub record_template_id: Option<i64>,
     pub sort_order: i64,
     pub created_at: String,
     pub updated_at: String,
@@ -232,7 +233,7 @@ pub struct ViewLayoutCardItem {
     pub has_override: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutTemplate {
     pub id: i64,
@@ -272,8 +273,8 @@ pub struct ViewLayoutTemplateCard {
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedViewFieldLayout {
     pub templates: Vec<ViewLayoutTemplate>,
-    pub active_template_id: i64,
-    pub active_template_name: String,
+    pub active_template_id: Option<i64>,
+    pub active_template_name: Option<String>,
     pub items: Vec<ViewLayoutCardItem>,
 }
 
@@ -539,10 +540,24 @@ pub struct AssignViewLayoutFolderTemplatePayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AssignViewLayoutRecordTemplatePayload {
+    pub folder_record_id: i64,
+    pub template_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearViewLayoutRecordTemplatePayload {
+    pub folder_record_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetResolvedViewFieldLayoutPayload {
     pub table_id: i64,
     pub record_id: i64,
     pub folder_id: Option<i64>,
+    pub folder_record_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1225,6 +1240,14 @@ impl Db {
               FOREIGN KEY(template_id) REFERENCES view_layout_templates(id)
             );
 
+            CREATE TABLE IF NOT EXISTS view_layout_record_template_assignments (
+              folder_record_id INTEGER PRIMARY KEY,
+              template_id INTEGER NOT NULL,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(folder_record_id) REFERENCES view_nav_folder_records(id),
+              FOREIGN KEY(template_id) REFERENCES view_layout_templates(id)
+            );
+
             CREATE TABLE IF NOT EXISTS view_layout_template_cards (
               card_id INTEGER PRIMARY KEY AUTOINCREMENT,
               template_id INTEGER NOT NULL,
@@ -1368,6 +1391,15 @@ impl Db {
         let result = (|| -> Result<(), DbError> {
             self.conn.execute(
                 "DELETE FROM record_tag_links WHERE table_id = ?",
+                [payload.table_id],
+            )?;
+            self.conn.execute(
+                "
+                DELETE FROM view_layout_record_template_assignments
+                WHERE folder_record_id IN (
+                  SELECT id FROM view_nav_folder_records WHERE table_id = ?
+                )
+                ",
                 [payload.table_id],
             )?;
             self.conn.execute(
@@ -1753,6 +1785,16 @@ impl Db {
             params![payload.table_id, payload.record_id],
         )?;
         self.conn.execute(
+            "
+            DELETE FROM view_layout_record_template_assignments
+            WHERE folder_record_id IN (
+              SELECT id FROM view_nav_folder_records
+              WHERE table_id = ? AND record_id = ?
+            )
+            ",
+            params![payload.table_id, payload.record_id],
+        )?;
+        self.conn.execute(
             "DELETE FROM view_nav_folder_records WHERE table_id = ? AND record_id = ?",
             params![payload.table_id, payload.record_id],
         )?;
@@ -1916,6 +1958,32 @@ impl Db {
               WHERE scope_type = 'folder'
                 AND folder_id IN (SELECT id FROM descendants)
             )
+            DELETE FROM view_layout_record_template_assignments
+            WHERE folder_record_id IN (
+              SELECT id
+              FROM view_nav_folder_records
+              WHERE folder_id IN (SELECT id FROM descendants)
+            )
+              OR template_id IN (SELECT id FROM folder_templates)
+            ",
+            [payload.folder_id],
+        )?;
+
+        tx.execute(
+            "
+            WITH RECURSIVE descendants(id) AS (
+              SELECT id FROM view_nav_nodes WHERE id = ?
+              UNION ALL
+              SELECT child.id
+              FROM view_nav_nodes child
+              INNER JOIN descendants ON child.parent_id = descendants.id
+            ),
+            folder_templates(id) AS (
+              SELECT id
+              FROM view_layout_templates
+              WHERE scope_type = 'folder'
+                AND folder_id IN (SELECT id FROM descendants)
+            )
             DELETE FROM view_layout_card_column_bindings
             WHERE template_id IN (SELECT id FROM folder_templates)
             ",
@@ -2027,11 +2095,14 @@ impl Db {
               t.display_name,
               r.record_id,
               r.record_label,
+              assignment.template_id,
               r.sort_order,
               r.created_at,
               r.updated_at
             FROM view_nav_folder_records r
             JOIN app_tables t ON t.id = r.table_id
+            LEFT JOIN view_layout_record_template_assignments assignment
+              ON assignment.folder_record_id = r.id
             ORDER BY r.folder_id, r.sort_order, r.id
             ",
         )?;
@@ -2044,9 +2115,10 @@ impl Db {
                 table_display_name: row.get(4)?,
                 record_id: row.get(5)?,
                 record_label: row.get(6)?,
-                sort_order: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                record_template_id: row.get(7)?,
+                sort_order: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         })?;
 
@@ -2124,6 +2196,11 @@ impl Db {
         &self,
         payload: RemoveViewNavFolderRecordPayload,
     ) -> Result<(), DbError> {
+        self.conn.execute(
+            "DELETE FROM view_layout_record_template_assignments WHERE folder_record_id = ?",
+            [payload.folder_record_id],
+        )?;
+
         let affected = self.conn.execute(
             "DELETE FROM view_nav_folder_records WHERE id = ?",
             [payload.folder_record_id],
@@ -2588,6 +2665,10 @@ impl Db {
             [payload.template_id],
         )?;
         tx.execute(
+            "DELETE FROM view_layout_record_template_assignments WHERE template_id = ?",
+            [payload.template_id],
+        )?;
+        tx.execute(
             "DELETE FROM view_layout_templates WHERE id = ?",
             [payload.template_id],
         )?;
@@ -2622,24 +2703,78 @@ impl Db {
         Ok(template)
     }
 
+    pub fn assign_view_layout_record_template(
+        &self,
+        payload: AssignViewLayoutRecordTemplatePayload,
+    ) -> Result<ViewNavFolderRecord, DbError> {
+        let folder_record = self.get_view_nav_folder_record(payload.folder_record_id)?;
+        let template = self.get_view_layout_template(payload.template_id)?;
+        if template.scope_type != "folder"
+            || (template.folder_id.is_some() && template.folder_id != Some(folder_record.folder_id))
+        {
+            return Err(DbError::InvalidInput(
+                "layout template folder mismatch".into(),
+            ));
+        }
+
+        if self.assigned_folder_template_id(folder_record.folder_id)? == Some(payload.template_id) {
+            self.conn.execute(
+                "DELETE FROM view_layout_record_template_assignments WHERE folder_record_id = ?",
+                [payload.folder_record_id],
+            )?;
+            return self.get_view_nav_folder_record(payload.folder_record_id);
+        }
+
+        self.conn.execute(
+            "
+            INSERT INTO view_layout_record_template_assignments
+              (folder_record_id, template_id, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(folder_record_id) DO UPDATE SET
+              template_id = excluded.template_id,
+              updated_at = CURRENT_TIMESTAMP
+            ",
+            params![payload.folder_record_id, payload.template_id],
+        )?;
+
+        self.get_view_nav_folder_record(payload.folder_record_id)
+    }
+
+    pub fn clear_view_layout_record_template(
+        &self,
+        payload: ClearViewLayoutRecordTemplatePayload,
+    ) -> Result<ViewNavFolderRecord, DbError> {
+        self.get_view_nav_folder_record(payload.folder_record_id)?;
+        self.conn.execute(
+            "DELETE FROM view_layout_record_template_assignments WHERE folder_record_id = ?",
+            [payload.folder_record_id],
+        )?;
+        self.get_view_nav_folder_record(payload.folder_record_id)
+    }
+
     pub fn get_resolved_view_field_layout(
         &self,
         payload: GetResolvedViewFieldLayoutPayload,
     ) -> Result<ResolvedViewFieldLayout, DbError> {
         let table = self.get_table_summary(payload.table_id)?;
         self.ensure_table_record_exists(&table.table_name, payload.record_id)?;
-        let active_template_id = self.resolve_view_layout_template_id(payload.folder_id)?;
-        let active_template = self.get_view_layout_template(active_template_id)?;
-        let templates = vec![self.get_view_layout_template(active_template_id)?];
+        let active_template_id = self
+            .resolve_record_view_layout_template_id(payload.folder_record_id, payload.folder_id)?;
+        let active_template = active_template_id
+            .map(|template_id| self.get_view_layout_template(template_id))
+            .transpose()?;
+        let items = match active_template_id {
+            Some(template_id) => {
+                self.resolve_view_layout_items(template_id, payload.table_id, payload.record_id)?
+            }
+            None => Vec::new(),
+        };
+
         Ok(ResolvedViewFieldLayout {
-            templates,
+            templates: active_template.iter().cloned().collect(),
             active_template_id,
-            active_template_name: active_template.name,
-            items: self.resolve_view_layout_items(
-                active_template_id,
-                payload.table_id,
-                payload.record_id,
-            )?,
+            active_template_name: active_template.map(|template| template.name),
+            items,
         })
     }
 
@@ -3454,57 +3589,51 @@ impl Db {
             .map_err(DbError::from)
     }
 
-    fn ensure_folder_view_layout_template(&self, folder_id: i64) -> Result<i64, DbError> {
-        self.ensure_view_nav_folder(folder_id)?;
-        if let Some(template_id) = self.assigned_folder_template_id(folder_id)? {
-            return Ok(template_id);
-        }
-        if let Some(template_id) = self
-            .conn
+    fn assigned_record_template_id(&self, folder_record_id: i64) -> Result<Option<i64>, DbError> {
+        self.conn
             .query_row(
                 "
-                SELECT id FROM view_layout_templates
-                WHERE scope_type = 'folder' AND folder_id = ?
-                ORDER BY id
-                LIMIT 1
+                SELECT template_id FROM view_layout_record_template_assignments
+                WHERE folder_record_id = ?
                 ",
-                [folder_id],
+                [folder_record_id],
                 |row| row.get(0),
             )
-            .optional()?
-        {
-            self.conn.execute(
-                "
-                INSERT OR REPLACE INTO view_layout_folder_template_assignments
-                  (folder_id, template_id, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                ",
-                params![folder_id, template_id],
-            )?;
-            return Ok(template_id);
-        }
-
-        self.conn.execute(
-            "INSERT INTO view_layout_templates (name, scope_type, folder_id) VALUES (?, 'folder', ?)",
-            params!["デフォルトレイアウト", folder_id],
-        )?;
-        let template_id = self.conn.last_insert_rowid();
-        self.conn.execute(
-            "
-            INSERT OR REPLACE INTO view_layout_folder_template_assignments
-              (folder_id, template_id, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ",
-            params![folder_id, template_id],
-        )?;
-        Ok(template_id)
+            .optional()
+            .map_err(DbError::from)
     }
 
-    fn resolve_view_layout_template_id(&self, folder_id: Option<i64>) -> Result<i64, DbError> {
-        let folder_id = folder_id.ok_or_else(|| {
-            DbError::InvalidInput("folder layout template requires a folder".into())
-        })?;
-        self.ensure_folder_view_layout_template(folder_id)
+    fn resolve_record_view_layout_template_id(
+        &self,
+        folder_record_id: Option<i64>,
+        folder_id: Option<i64>,
+    ) -> Result<Option<i64>, DbError> {
+        if let Some(folder_record_id) = folder_record_id {
+            let folder_record = self.get_view_nav_folder_record(folder_record_id)?;
+            if let Some(payload_folder_id) = folder_id {
+                if payload_folder_id != folder_record.folder_id {
+                    return Err(DbError::InvalidInput(
+                        "folder record does not belong to the target folder".into(),
+                    ));
+                }
+            }
+
+            if let Some(template_id) = self.assigned_record_template_id(folder_record_id)? {
+                return Ok(Some(template_id));
+            }
+
+            return self.assigned_folder_template_id(folder_record.folder_id);
+        }
+
+        match folder_id {
+            Some(folder_id) => {
+                self.ensure_view_nav_folder(folder_id)?;
+                self.assigned_folder_template_id(folder_id)
+            }
+            None => Err(DbError::InvalidInput(
+                "folder layout template requires a folder".into(),
+            )),
+        }
     }
 
     fn copy_view_layout_cards(
@@ -3814,11 +3943,14 @@ impl Db {
                   t.display_name,
                   r.record_id,
                   r.record_label,
+                  assignment.template_id,
                   r.sort_order,
                   r.created_at,
                   r.updated_at
                 FROM view_nav_folder_records r
                 JOIN app_tables t ON t.id = r.table_id
+                LEFT JOIN view_layout_record_template_assignments assignment
+                  ON assignment.folder_record_id = r.id
                 WHERE r.id = ?
                 ",
                 [folder_record_id],
@@ -3831,9 +3963,10 @@ impl Db {
                         table_display_name: row.get(4)?,
                         record_id: row.get(5)?,
                         record_label: row.get(6)?,
-                        sort_order: row.get(7)?,
-                        created_at: row.get(8)?,
-                        updated_at: row.get(9)?,
+                        record_template_id: row.get(7)?,
+                        sort_order: row.get(8)?,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
                     })
                 },
             )
@@ -3872,11 +4005,14 @@ impl Db {
               t.display_name,
               r.record_id,
               r.record_label,
+              assignment.template_id,
               r.sort_order,
               r.created_at,
               r.updated_at
             FROM view_nav_folder_records r
             JOIN app_tables t ON t.id = r.table_id
+            LEFT JOIN view_layout_record_template_assignments assignment
+              ON assignment.folder_record_id = r.id
             WHERE r.folder_id = ?
             ORDER BY r.sort_order, r.id
             ",
@@ -3891,9 +4027,10 @@ impl Db {
                 table_display_name: row.get(4)?,
                 record_id: row.get(5)?,
                 record_label: row.get(6)?,
-                sort_order: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                record_template_id: row.get(7)?,
+                sort_order: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         })?;
 

@@ -21,6 +21,8 @@ defineProps<{
   error: string;
   onClearError: () => void;
   layoutCardItems: ViewLayoutCardItem[];
+  activeLayoutTemplateId: number | null;
+  activeLayoutTemplateName: string | null;
   folderCount: number;
   layoutSaving: boolean;
   loading: boolean;
@@ -64,12 +66,17 @@ defineProps<{
     folderId: number,
     templateId: number
   ) => Promise<void>;
+  onAssignRecordLayoutTemplate: (
+    folderRecordId: number,
+    templateId: number
+  ) => Promise<void>;
   onCreateFolderLayoutTemplate: (
     folderId: number | null,
     name: string
   ) => Promise<void>;
   onCreateFolder: (parentId: number | null, name: string) => Promise<void>;
   onClearTemplatePreview: () => void;
+  onClearRecordLayoutTemplate: (folderRecordId: number) => Promise<void>;
   onOpenModeHelp: () => void;
   onSelectTemplatePreviewRecord: (
     record: TemplatePreviewRecordSelection
@@ -135,8 +142,14 @@ defineProps<{
       <ViewFreeLayoutCanvas
         :detail="selectedTableDetail"
         :layout-items="layoutCardItems"
+        :active-template-id="activeLayoutTemplateId"
+        :active-template-name="activeLayoutTemplateName"
+        :folder-active-template-id="selectedFolderActiveTemplateId"
+        :folder-layout-templates="selectedFolderLayoutTemplates"
         :saving="layoutSaving"
         :selected-item="selectedItem"
+        @assign-record-template="onAssignRecordLayoutTemplate"
+        @clear-record-template="onClearRecordLayoutTemplate"
         @reset-card-override="onResetCardLayoutOverride"
         @reset-record-overrides="onResetRecordLayoutOverrides"
         @save-card-column-bindings="onSaveLayoutCardColumnBindings"

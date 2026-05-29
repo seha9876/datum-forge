@@ -9,6 +9,7 @@ import type {
   TemplatePreviewRecordSelection,
   ViewLayoutCardItem,
   ViewLayoutCardColumnBinding,
+  ViewLayoutTemplate,
   ViewLayoutTemplateCard,
   ViewSelection,
   ViewTableSection
@@ -154,7 +155,11 @@ const DEFAULT_CARD_STYLE = {
 const props = withDefaults(
   defineProps<{
     detail: TableDetail | null;
+    activeTemplateId?: number | null;
+    activeTemplateName?: string | null;
     editorMode?: "record" | "template";
+    folderActiveTemplateId?: number | null;
+    folderLayoutTemplates?: ViewLayoutTemplate[];
     layoutItems: ViewLayoutCardItem[];
     saving: boolean;
     selectedItem: ViewSelection | null;
@@ -167,7 +172,11 @@ const props = withDefaults(
     templatePreviewSelectedItem?: ViewSelection | null;
   }>(),
   {
+    activeTemplateId: null,
+    activeTemplateName: null,
     editorMode: "record",
+    folderActiveTemplateId: null,
+    folderLayoutTemplates: () => [],
     tableSections: () => [],
     templateCards: () => [],
     templateName: "",
@@ -179,7 +188,9 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
+  "assign-record-template": [number, number];
   "clear-template-preview": [];
+  "clear-record-template": [number];
   "reset-card-override": [number];
   "reset-record-overrides": [];
   "save-card-column-bindings": [ViewLayoutCardColumnBinding[]];
@@ -300,6 +311,47 @@ const bindingColumnItems = computed(() =>
     value: column.id
   }))
 );
+const recordTemplateItems = computed(() =>
+  props.folderLayoutTemplates
+    .filter((template) => template.id !== props.folderActiveTemplateId)
+    .map((template) => ({
+      title: template.name,
+      value: template.id
+    }))
+);
+const recordTemplateSource = computed<"record" | "folder" | "unset">(() => {
+  const selected = props.selectedItem;
+  if (selected?.type !== "tableRecord") {
+    return "unset";
+  }
+  if (selected.recordTemplateId) {
+    return "record";
+  }
+  return props.folderActiveTemplateId && props.activeTemplateId
+    ? "folder"
+    : "unset";
+});
+const recordTemplateSourceLabel = computed(() => {
+  if (recordTemplateSource.value === "record") {
+    return "このデータ専用";
+  }
+  if (recordTemplateSource.value === "folder") {
+    return "フォルダから継承中";
+  }
+  return "未設定";
+});
+const recordTemplateSourceColor = computed(() => {
+  if (recordTemplateSource.value === "record") {
+    return "primary";
+  }
+  if (recordTemplateSource.value === "folder") {
+    return "secondary";
+  }
+  return "warning";
+});
+const currentTemplateName = computed(
+  () => props.activeTemplateName ?? "未設定"
+);
 const templatePreviewRecordItems = computed(() =>
   props.tableSections.flatMap((section) =>
     section.records.map((record) => ({
@@ -320,6 +372,16 @@ const selectedTemplatePreviewRecordKey = computed(() => {
   return selected?.type === "tableRecord"
     ? `${selected.tableId}:${selected.recordId}`
     : null;
+});
+const selectedRecordPanelKey = computed(() => {
+  const selected = props.selectedItem;
+  if (selected?.type !== "tableRecord") {
+    return null;
+  }
+  if (selected.folderRecordId) {
+    return `folder-record:${selected.folderRecordId}`;
+  }
+  return `record:${selected.tableId}:${selected.recordId}:${selected.folderId ?? ""}`;
 });
 const templatePreviewLabel = computed(() => {
   const selected = props.templatePreviewSelectedItem;
@@ -425,7 +487,7 @@ watch(templatePreviewUnboundCount, (count) => {
   }
 });
 watch(
-  () => props.selectedItem,
+  () => selectedRecordPanelKey.value,
   () => {
     clearSelection();
     closeBindingEditor();
@@ -613,6 +675,33 @@ function selectTemplatePreviewRecord(value: unknown) {
 
 function clearTemplatePreview() {
   emit("clear-template-preview");
+}
+
+function assignRecordTemplate(templateId: unknown) {
+  const selected = props.selectedItem;
+  if (selected?.type !== "tableRecord" || !selected.folderRecordId) {
+    return;
+  }
+  if (
+    typeof templateId !== "number" ||
+    templateId === props.folderActiveTemplateId ||
+    templateId === selected.recordTemplateId
+  ) {
+    return;
+  }
+  emit("assign-record-template", selected.folderRecordId, templateId);
+}
+
+function clearRecordTemplate() {
+  const selected = props.selectedItem;
+  if (
+    selected?.type !== "tableRecord" ||
+    !selected.folderRecordId ||
+    !selected.recordTemplateId
+  ) {
+    return;
+  }
+  emit("clear-record-template", selected.folderRecordId);
 }
 
 /** 紐付けドラフトが元の値から変更されているかを判定します。 */
@@ -1660,11 +1749,7 @@ function layoutToTemplateCard(
           プレビュー中: {{ templatePreviewLabel }}
         </v-chip>
         <v-btn
-          v-if="
-            !isTemplateMode &&
-            bindableTemplateLayouts.length > 0 &&
-            displayColumns.length > 0
-          "
+          v-if="!isTemplateMode && displayColumns.length > 0"
           prepend-icon="mdi-card-bulleted-settings-outline"
           color="primary"
           :variant="isBindingEditorVisible ? 'flat' : 'tonal'"
@@ -1672,7 +1757,7 @@ function layoutToTemplateCard(
           :disabled="hasUnboundTemplateForTable"
           @click="toggleBindingEditor"
         >
-          紐付け設定
+          テンプレート設定
         </v-btn>
         <v-btn
           v-if="isTemplateMode"
@@ -1886,14 +1971,53 @@ function layoutToTemplateCard(
         @pointerdown.stop
         @click.stop
       >
+        <div class="view-record-template-settings">
+          <strong>テンプレート設定</strong>
+          <div class="view-record-template-heading">
+            <div>
+              <strong>適用中テンプレート</strong>
+              <span>{{ currentTemplateName }}</span>
+            </div>
+            <v-chip
+              size="small"
+              :color="recordTemplateSourceColor"
+              variant="tonal"
+            >
+              {{ recordTemplateSourceLabel }}
+            </v-chip>
+          </div>
+          <v-select
+            :items="recordTemplateItems"
+            :model-value="
+              selectedItem?.type === 'tableRecord'
+                ? (selectedItem.recordTemplateId ?? null)
+                : null
+            "
+            item-title="title"
+            item-value="value"
+            label="個別テンプレート"
+            variant="outlined"
+            density="compact"
+            hide-details
+            :disabled="saving || recordTemplateItems.length === 0"
+            @update:model-value="assignRecordTemplate"
+          />
+          <v-btn
+            color="primary"
+            variant="tonal"
+            size="small"
+            :disabled="
+              saving ||
+              selectedItem?.type !== 'tableRecord' ||
+              !selectedItem.recordTemplateId
+            "
+            @click="clearRecordTemplate"
+          >
+            個別設定を解除
+          </v-btn>
+        </div>
         <div class="view-binding-setup-copy">
-          <strong>
-            {{
-              hasUnboundTemplateForTable
-                ? "このテーブルの表示項目を紐付けてください"
-                : "このテーブルの表示項目を編集"
-            }}
-          </strong>
+          <strong>カードごとの表示項目</strong>
           <p>
             カードを選ぶと、キャンバス上の対応する位置も強調されます。未使用にしたいカードは未選択のまま保存できます。
           </p>
@@ -1927,6 +2051,9 @@ function layoutToTemplateCard(
               item-value="value"
               label="表示カラム"
               variant="outlined"
+              @click.stop
+              @focusin.stop
+              @pointerdown.stop
               @update:model-value="setBindingDraft(layout.cardId, $event)"
             />
           </v-card>

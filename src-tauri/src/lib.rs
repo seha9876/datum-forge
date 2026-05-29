@@ -9,7 +9,8 @@ use std::{path::Path, process::Command, sync::Mutex};
 
 use database::{
     AddColumnPayload, AddViewNavFolderRecordsPayload, AppBootstrap, AppSettings,
-    AssignViewLayoutFolderTemplatePayload, AttachRecordTagPayload, CreateAndAttachRecordTagPayload,
+    AssignViewLayoutFolderTemplatePayload, AssignViewLayoutRecordTemplatePayload,
+    AttachRecordTagPayload, ClearViewLayoutRecordTemplatePayload, CreateAndAttachRecordTagPayload,
     CreateDatabasePayload, CreateTablePayload, CreateViewLayoutTemplatePayload,
     CreateViewNavFolderPayload, Db, DeleteColumnPayload, DeleteRecordPayload,
     DeleteRecordTagGroupPayload, DeleteRecordTagPayload, DeleteTablePayload,
@@ -555,6 +556,36 @@ fn assign_view_layout_folder_template(
 }
 
 #[tauri::command]
+fn assign_view_layout_record_template(
+    state: State<'_, AppState>,
+    payload: AssignViewLayoutRecordTemplatePayload,
+) -> Result<ViewNavFolderRecord, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .assign_view_layout_record_template(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_view_layout_record_template(
+    state: State<'_, AppState>,
+    payload: ClearViewLayoutRecordTemplatePayload,
+) -> Result<ViewNavFolderRecord, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .clear_view_layout_record_template(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_resolved_view_field_layout(
     state: State<'_, AppState>,
     payload: GetResolvedViewFieldLayoutPayload,
@@ -887,6 +918,8 @@ pub fn run() {
             duplicate_view_layout_template,
             delete_view_layout_template,
             assign_view_layout_folder_template,
+            assign_view_layout_record_template,
+            clear_view_layout_record_template,
             get_resolved_view_field_layout,
             get_view_layout_template_cards,
             list_view_layout_card_column_bindings,
