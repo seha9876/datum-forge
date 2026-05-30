@@ -11,7 +11,6 @@ import TableSidebar from "./components/TableSidebar.vue";
 import MasterManagementSidebar from "./components/workspace/master/MasterManagementSidebar.vue";
 import ViewNavigationSidebar from "./components/workspace/view/ViewNavigationSidebar.vue";
 import WorkspaceModeTabs from "./components/workspace/WorkspaceModeTabs.vue";
-import WorkspaceHeader from "./components/WorkspaceHeader.vue";
 import WorkspaceModeHelpDialog from "./components/WorkspaceModeHelpDialog.vue";
 import {
   createConfirmDialog,
@@ -26,14 +25,6 @@ import type { WorkspaceMode } from "./composables/useWorkspaceMode";
 
 type MasterSection = "options" | "tags";
 
-/** テーブル未選択時にトップバーへ表示する補助文言です。 */
-const EMPTY_TABLE_SUBTITLE = "テーブルを選択してください";
-/** テーブルが1件もないときにトップバーへ表示する補助文言です。 */
-const NO_TABLE_SUBTITLE = "最初のテーブルを作成してください";
-/** マスタ管理時にトップバーへ表示する見出しです。 */
-const MASTER_WORKSPACE_TITLE = "マスタ管理";
-/** マスタ管理時にトップバーへ表示する補助文言です。 */
-const MASTER_WORKSPACE_SUBTITLE = "共通マスタを管理";
 /** サイドバーを表示したまま保てる最小幅です。 */
 const SIDEBAR_MIN_WIDTH = 220;
 /** 最小幅でさらに押し込んだときに閉じる判定幅です。 */
@@ -168,40 +159,22 @@ const previousNormalMode = ref<Exclude<WorkspaceMode, "settings">>("design");
 const sidebarResizeStartWidth = ref(SIDEBAR_DEFAULT_WIDTH);
 /** ドラッグ開始時のポインタ位置です。 */
 const sidebarResizeStartX = ref(0);
-/** 現在表示中テーブルの表示名をトップバー用に整形します。 */
-const currentTableTitle = computed(
-  () => selectedTable.value?.table.displayName ?? "Datum Forge"
-);
-/** 現在表示中テーブルの物理名、未選択時は案内文を返します。 */
-const currentTableSubtitle = computed(() => {
-  if (selectedTable.value) {
-    return selectedTable.value.table.tableName;
-  }
-  return store.bootstrap?.tables.length === 0
-    ? NO_TABLE_SUBTITLE
-    : EMPTY_TABLE_SUBTITLE;
-});
 /** 閲覧モード本文で表示するテーブル総数です。 */
 const viewTableCount = computed(() => store.bootstrap?.tables.length ?? 0);
-/** 設定画面では上部バーの見出しを固定します。 */
-const workspaceTitle = computed(() =>
-  currentMode.value === "settings"
-    ? "設定"
-    : currentMode.value === "master"
-      ? MASTER_WORKSPACE_TITLE
-      : currentTableTitle.value
-);
-/** 設定画面では上部バーの補助文言を固定します。 */
-const workspaceSubtitle = computed(() =>
-  currentMode.value === "settings"
-    ? "アプリケーション設定"
-    : currentMode.value === "master"
-      ? MASTER_WORKSPACE_SUBTITLE
-      : currentTableSubtitle.value
-);
 /** ヘルプ表示対象の通常モードです。 */
 const modeHelpTarget = computed<Exclude<WorkspaceMode, "settings">>(() =>
   currentMode.value === "settings" ? previousNormalMode.value : currentMode.value
+);
+/** タイトルバーのヘルプメニューで、モードヘルプを選べる状態かを表します。 */
+const canOpenModeHelp = computed(
+  () =>
+    currentMode.value !== "settings" &&
+    !isDatabaseSetupRequired.value &&
+    !isCheckingDatabase.value
+);
+/** タイトルバーのヘルプメニューで、設定画面へ移動できる状態かを表します。 */
+const canToggleSettings = computed(
+  () => !isDatabaseSetupRequired.value && !isCheckingDatabase.value
 );
 /** DBセットアップが終わるまでは通常ワークスペースを表示しません。 */
 const isDatabaseSetupRequired = computed(
@@ -457,9 +430,33 @@ onMounted(() => {
         <v-btn class="app-window-no-drag" variant="text" size="x-small">
           ウィンドウ
         </v-btn>
-        <v-btn class="app-window-no-drag" variant="text" size="x-small">
-          ヘルプ
-        </v-btn>
+        <v-menu location="bottom start" transition="fade-transition">
+          <template #activator="{ props: menuProps }">
+            <v-btn
+              v-bind="menuProps"
+              class="app-window-no-drag"
+              variant="text"
+              size="x-small"
+            >
+              ヘルプ
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="180">
+            <v-list-item
+              prepend-icon="mdi-help-circle-outline"
+              title="このモードのヘルプ"
+              :disabled="!canOpenModeHelp"
+              @click="openModeHelp"
+            />
+            <v-list-item
+              prepend-icon="mdi-cog"
+              title="設定"
+              :active="currentMode === 'settings'"
+              :disabled="!canToggleSettings"
+              @click="toggleSettingsPage"
+            />
+          </v-list>
+        </v-menu>
       </nav>
 
       <WorkspaceModeTabs
@@ -573,15 +570,6 @@ onMounted(() => {
 
       <v-main class="app-main">
         <div class="app-main-frame">
-          <!-- 現在の画面名、ヘルプ、設定ボタンを表示する上部バーです。 -->
-          <WorkspaceHeader
-            :model-value="currentMode"
-            :table-title="workspaceTitle"
-            :table-subtitle="workspaceSubtitle"
-            :on-open-mode-help="openModeHelp"
-            :on-open-settings="toggleSettingsPage"
-          />
-
           <div class="app-main-body-scroll">
             <SettingsPage
               v-if="currentMode === 'settings'"

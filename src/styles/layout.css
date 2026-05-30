@@ -657,6 +657,7 @@
 
 .app-window-mode-tabs .v-tabs {
   height: 100%;
+  font-size: 0.78rem;
 }
 
 .app-window-mode-tabs .v-tab {
@@ -705,60 +706,7 @@
   min-height: 0;
 }
 
-.topbar-shell {
-  position: relative;
-  top: auto;
-  z-index: 4;
-  margin-bottom: 0;
-  border-radius: 0 0 24px 24px !important;
-  backdrop-filter: blur(12px);
-}
-
-.topbar-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  width: 100%;
-  min-height: 60px;
-  padding: 0.55rem 0.9rem;
-}
-
-.topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.topbar-title-wrap {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-  flex: 0 1 260px;
-}
-
-.topbar-title-wrap strong,
-.topbar-title-wrap small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.topbar-title-wrap small {
-  color: var(--muted);
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
 .app-main-frame {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
