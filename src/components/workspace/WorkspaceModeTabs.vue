@@ -19,12 +19,12 @@ const modes: Array<{
 }> = [
   {
     id: "view",
-    label: "閲覧モード",
+    label: "閲覧",
     icon: "mdi-book-open-page-variant-outline"
   },
-  { id: "design", label: "設計モード", icon: "mdi-ruler-square-compass" },
-  { id: "data", label: "データモード", icon: "mdi-table-large" },
-  { id: "master", label: "マスタ管理", icon: "mdi-format-list-bulleted-square" }
+  { id: "design", label: "設計", icon: "mdi-ruler-square-compass" },
+  { id: "data", label: "データ", icon: "mdi-table-large" },
+  { id: "master", label: "マスタ", icon: "mdi-format-list-bulleted-square" }
 ];
 
 type WheelLikeEvent = {
