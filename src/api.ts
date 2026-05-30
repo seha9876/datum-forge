@@ -21,9 +21,11 @@ import type {
   DeleteViewNavFolderPayload,
   DetachRecordTagPayload,
   DuplicateViewLayoutTemplatePayload,
+  ExportTableCsvPayload,
   FolderViewLayoutTemplates,
   GetViewLayoutTemplateCardsPayload,
   GetResolvedViewFieldLayoutPayload,
+  ImportTableCsvPayload,
   ListViewLayoutCardColumnBindingsPayload,
   ListViewLayoutTemplatesForFolderPayload,
   ReferenceChoice,
@@ -99,6 +101,12 @@ export const api = {
     invoke<number>("create_table", { payload }),
   deleteTable: (payload: DeleteTablePayload) =>
     invoke<void>("delete_table", { payload }),
+  /** 指定テーブルの表示値をCSVとして保存します。 */
+  exportTableCsv: (payload: ExportTableCsvPayload) =>
+    invoke<void>("export_table_csv", { payload }),
+  /** 選択されたCSVを指定方式で対象テーブルへ取り込みます。 */
+  importTableCsv: (payload: ImportTableCsvPayload) =>
+    invoke<void>("import_table_csv", { payload }),
   /**
    * テーブルに新しいカラムを追加します。
    *

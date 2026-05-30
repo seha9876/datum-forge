@@ -437,6 +437,22 @@ export interface DeleteTablePayload {
   tableId: number;
 }
 
+export interface ExportTableCsvPayload {
+  tableId: number;
+  outputPath: string;
+}
+
+export type ImportTableCsvMode =
+  | "skipExistingPrimaryKeys"
+  | "appendIgnoringPrimaryKeys"
+  | "upsertByPrimaryKey";
+
+export interface ImportTableCsvPayload {
+  tableId: number;
+  inputPath: string;
+  mode: ImportTableCsvMode;
+}
+
 export interface AddColumnPayload {
   tableId: number;
   columnName: string;

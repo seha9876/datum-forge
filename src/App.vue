@@ -43,9 +43,11 @@ const {
   deleteRecord,
   deleteTable,
   editingRecordId,
+  exportTableCsv,
   fieldTypes,
   fieldTypeLabel,
   fieldTypeMeta,
+  importTableCsv,
   inputType,
   optionGroupForm,
   recordValues,
@@ -552,6 +554,8 @@ onMounted(() => {
             :rail="isSidebarRail"
             :selected-table-id="store.selectedTableId"
             :on-delete-table="deleteTable"
+            :on-export-table-csv="exportTableCsv"
+            :on-import-table-csv="importTableCsv"
             :on-load-table="store.loadTable"
             :on-open-create-dialog="openTableDialog"
           />

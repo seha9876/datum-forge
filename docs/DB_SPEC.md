@@ -4,6 +4,37 @@ Datum Forge は、ユーザー定義テーブル本体と、アプリが挙動�
 
 ## 採用する型
 
+## CSV入出力に関するDB扱い
+
+CSV入出力は新しいメタテーブルを追加せず、既存のユーザー定義テーブルと `app_table_columns` の定義を使って処理する。
+
+### CSVエクスポート
+
+- 対象テーブルのカラム定義は `app_table_columns.sort_order` 順に取得する。
+- ヘッダーには `app_table_columns.display_name` を使う。
+- レコードはユーザー定義テーブルの `id` 昇順で取得する。
+- 値は画面表示用の値へ変換して出力する。
+  - `single_select`: `select_options.label`
+  - `reference`: `参照先ID:参照先代表表示値`
+  - `boolean`: `true` / `false`
+- CSVファイル自体はアプリDB外の任意パスへ保存する。
+
+### CSVインポート
+
+- CSVヘッダーは `app_table_columns.column_name` または `app_table_columns.display_name` と完全一致する必要がある。
+- CSVヘッダー数は対象テーブルの全カラム数と一致する必要があり、`id` カラムも必須とする。
+- ヘッダー検証、値変換、INSERT/UPDATEは1トランザクションで実行する。
+- 値変換は既存のカラム型に従う。
+  - 空文字: `NULL`
+  - `integer` / `date`: 整数
+  - `real`: 小数
+  - `boolean`: `true` / `false` / `1` / `0`
+  - `single_select`: `select_options.label` または `option_no`
+  - `reference`: 参照先ID、または `参照先ID:表示値`
+- `新しいIDの行だけ追加` では、既存IDと重複する行をスキップし、重複しない行はCSVのIDを維持して追加する。
+- `すべて新しい行として追加` では、CSVのIDをINSERT対象から外し、SQLiteの自動採番に任せる。
+- `同じIDの行は上書き` では、既存IDの非IDカラムを更新し、存在しないIDはCSVのIDを維持して追加する。
+
 - `text` -> `TEXT`
 - `integer` -> `INTEGER`
 - `real` -> `REAL`

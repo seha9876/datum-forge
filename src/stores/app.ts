@@ -11,6 +11,8 @@ import type {
   DeleteColumnPayload,
   DeleteRecordPayload,
   DeleteTablePayload,
+  ExportTableCsvPayload,
+  ImportTableCsvPayload,
   ReorderColumnsPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
@@ -108,6 +110,29 @@ export const useAppStore = defineStore("app", {
         }
         this.references = {};
         await this.initialize();
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async exportTableCsv(payload: ExportTableCsvPayload) {
+      this.error = "";
+      try {
+        await api.exportTableCsv(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    /**
+     * CSVを取り込んだ後、サイドバーと一覧の表示を最新状態へ戻します。
+     */
+    async importTableCsv(payload: ImportTableCsvPayload) {
+      this.error = "";
+      try {
+        await api.importTableCsv(payload);
+        await this.initialize();
+        await this.loadTable(payload.tableId);
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error;

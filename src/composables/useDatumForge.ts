@@ -6,6 +6,7 @@ import type {
   AddColumnPayload,
   AppColumn,
   FieldType,
+  ImportTableCsvMode,
   ReferenceChoice,
   SaveOptionGroupPayload,
   SelectOptionGroup,
@@ -491,6 +492,25 @@ export function useDatumForge() {
     resetRecordForm();
   }
 
+  /**
+   * 選択された保存先へ、指定テーブルのCSVを書き出します。
+   */
+  async function exportTableCsv(tableId: number, outputPath: string) {
+    await store.exportTableCsv({ tableId, outputPath });
+  }
+
+  /**
+   * 選択されたCSVを取り込み、成功後はレコード編集フォームを閉じます。
+   */
+  async function importTableCsv(
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode
+  ) {
+    await store.importTableCsv({ tableId, inputPath, mode });
+    resetRecordForm();
+  }
+
   onMounted(() => {
     // 初回表示時に必要な初期データを読み込みます。
     void store.initialize();
@@ -502,6 +522,8 @@ export function useDatumForge() {
     deleteColumn,
     deleteRecord,
     deleteTable,
+    exportTableCsv,
+    importTableCsv,
     editingRecordId,
     fieldTypes,
     fieldTypeLabel,

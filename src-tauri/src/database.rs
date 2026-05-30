@@ -7,7 +7,7 @@ use rusqlite::{params, params_from_iter, types::ValueRef, Connection, OptionalEx
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
 };
@@ -19,6 +19,8 @@ pub enum DbError {
     Sql(#[from] rusqlite::Error),
     #[error("filesystem error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("csv error: {0}")]
+    Csv(#[from] csv::Error),
     #[error("invalid input: {0}")]
     InvalidInput(String),
 }
@@ -74,7 +76,7 @@ pub struct AppTableSummary {
     pub sort_order: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppColumn {
     pub id: i64,
@@ -289,6 +291,37 @@ pub struct CreateTablePayload {
 #[serde(rename_all = "camelCase")]
 pub struct DeleteTablePayload {
     pub table_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportTableCsvPayload {
+    /// CSVを書き出す対象テーブルのIDです。
+    pub table_id: i64,
+    /// 保存ダイアログで選ばれた出力先パスです。
+    pub output_path: String,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportTableCsvMode {
+    /// CSV内のIDが既存レコードと重複しない行だけ追加します。
+    SkipExistingPrimaryKeys,
+    /// CSV内のIDを使わず、SQLiteの自動採番で全行を追加します。
+    AppendIgnoringPrimaryKeys,
+    /// CSV内のIDが既存なら更新し、なければそのIDで追加します。
+    UpsertByPrimaryKey,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportTableCsvPayload {
+    /// CSVを取り込む対象テーブルのIDです。
+    pub table_id: i64,
+    /// ファイル選択ダイアログで選ばれたCSVパスです。
+    pub input_path: String,
+    /// ID重複時の扱いを決めるインポート方式です。
+    pub mode: ImportTableCsvMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1700,6 +1733,100 @@ impl Db {
             columns,
             records,
         })
+    }
+
+    pub fn export_table_csv(&self, payload: ExportTableCsvPayload) -> Result<(), DbError> {
+        let output_path = payload.output_path.trim();
+        if output_path.is_empty() {
+            return Err(DbError::InvalidInput("outputPath is required".into()));
+        }
+
+        // 画面表示と同じ文字列をCSVに出すため、表示値付きのレコード一覧を使います。
+        let table = self.get_table_summary(payload.table_id)?;
+        let columns = self.list_columns(payload.table_id)?;
+        let records = self.list_records_with_order(&table.table_name, &columns, "ASC")?;
+        // Excelで日本語を開きやすいよう、UTF-8 BOMを先頭に付けます。
+        let mut csv = String::from("\u{feff}");
+        csv.push_str(
+            &columns
+                .iter()
+                .map(|column| csv_escape_field(&column.display_name))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push_str("\r\n");
+
+        for record in &records {
+            let row = columns
+                .iter()
+                .map(|column| {
+                    record
+                        .display_values
+                        .as_object()
+                        .and_then(|values| values.get(&column.column_name))
+                        .and_then(Value::as_str)
+                        .map(csv_escape_field)
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            csv.push_str(&row);
+            csv.push_str("\r\n");
+        }
+
+        fs::write(output_path, csv)?;
+        Ok(())
+    }
+
+    pub fn import_table_csv(&mut self, payload: ImportTableCsvPayload) -> Result<(), DbError> {
+        let input_path = payload.input_path.trim();
+        if input_path.is_empty() {
+            return Err(DbError::InvalidInput("inputPath is required".into()));
+        }
+
+        let table = self.get_table_summary(payload.table_id)?;
+        let columns = self.list_columns(payload.table_id)?;
+        let mut reader = csv::ReaderBuilder::new().from_path(input_path)?;
+        // CSVヘッダーをDBカラムへ対応付けます。ここで列数・物理名/論理名の一致を検証します。
+        let header_columns = resolve_csv_headers(reader.headers()?, &columns)?;
+        // 単一選択はCSV上のラベルから保存用のoption_noへ戻す必要があるため、先に辞書化します。
+        let select_option_maps = self.csv_select_option_maps(&columns)?;
+
+        // インポートは途中失敗時に中途半端な行を残さないよう、全行を1トランザクションで処理します。
+        let tx = self.conn.transaction()?;
+        for (row_index, record) in reader.records().enumerate() {
+            let record = record?;
+            // csv crateのrow_indexはデータ行の0始まりです。人が見て分かるようヘッダー分を足します。
+            let row_number = row_index + 2;
+            let values =
+                csv_record_to_values(&record, &header_columns, &select_option_maps, row_number)?;
+
+            match payload.mode {
+                ImportTableCsvMode::SkipExistingPrimaryKeys => {
+                    // 既存IDは触らず、CSVにしかないIDの行だけ追加します。
+                    let id = csv_row_id(&values, row_number)?;
+                    if csv_record_exists(&tx, &table.table_name, id)? {
+                        continue;
+                    }
+                    csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                }
+                ImportTableCsvMode::AppendIgnoringPrimaryKeys => {
+                    // CSVのIDを無視し、DB側に新しいIDを採番させて全行を追加します。
+                    csv_insert_record(&tx, &table.table_name, &columns, &values, false)?;
+                }
+                ImportTableCsvMode::UpsertByPrimaryKey => {
+                    // 同じIDがあれば更新、なければCSVのIDを維持して追加します。
+                    let id = csv_row_id(&values, row_number)?;
+                    if csv_record_exists(&tx, &table.table_name, id)? {
+                        csv_update_record(&tx, &table.table_name, &columns, &values, id)?;
+                    } else {
+                        csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                    }
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn save_record(&self, payload: SaveRecordPayload) -> Result<(), DbError> {
@@ -3159,14 +3286,24 @@ impl Db {
         table_name: &str,
         columns: &[AppColumn],
     ) -> Result<Vec<TableRecord>, DbError> {
+        self.list_records_with_order(table_name, columns, "ASC")
+    }
+
+    fn list_records_with_order(
+        &self,
+        table_name: &str,
+        columns: &[AppColumn],
+        id_order: &str,
+    ) -> Result<Vec<TableRecord>, DbError> {
         let selected_columns = columns
             .iter()
             .map(|column| format!("\"{}\"", column.column_name))
             .collect::<Vec<_>>();
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT {} FROM \"{}\" ORDER BY id DESC",
+            "SELECT {} FROM \"{}\" ORDER BY id {}",
             selected_columns.join(", "),
-            table_name
+            table_name,
+            id_order
         ))?;
         let mut rows = stmt.query([])?;
         let mut records = Vec::new();
@@ -3251,6 +3388,40 @@ impl Db {
                 _ => value.to_string(),
             }),
         }
+    }
+
+    fn csv_select_option_maps(
+        &self,
+        columns: &[AppColumn],
+    ) -> Result<HashMap<String, HashMap<String, i64>>, DbError> {
+        let mut maps = HashMap::new();
+        // CSVには選択肢ラベルが入ることがあるため、ラベル/番号の両方からoption_noを引けるようにします。
+        for column in columns
+            .iter()
+            .filter(|column| column.field_type == "single_select")
+        {
+            let group_id = column.select_option_group_id.ok_or_else(|| {
+                DbError::InvalidInput(format!(
+                    "{} is single_select but option group is missing",
+                    column.display_name
+                ))
+            })?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT option_no, label FROM select_options WHERE group_id = ?")?;
+            let options = stmt.query_map([group_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })?;
+
+            let mut option_map = HashMap::new();
+            for option in options {
+                let (option_no, label) = option?;
+                option_map.insert(option_no.to_string(), option_no);
+                option_map.insert(label, option_no);
+            }
+            maps.insert(column.column_name.clone(), option_map);
+        }
+        Ok(maps)
     }
 
     fn table_name_by_id(&self, table_id: i64) -> Result<String, DbError> {
@@ -4405,6 +4576,233 @@ fn to_sql_value(value: Option<&Value>, field_type: &str) -> Box<dyn ToSql> {
         }
         _ => Box::new(value.and_then(Value::as_str).map(|item| item.to_string()) as Option<String>),
     }
+}
+
+fn csv_escape_field(value: &str) -> String {
+    // CSVの特殊文字を含む値だけダブルクォートで包み、内部のクォートは2つにします。
+    if value.contains(|ch| matches!(ch, ',' | '"' | '\r' | '\n')) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// CSVヘッダーをテーブルカラムへ変換します。
+/// 物理名または論理名の完全一致だけを許可し、曖昧な列はここで弾きます。
+fn resolve_csv_headers(
+    headers: &csv::StringRecord,
+    columns: &[AppColumn],
+) -> Result<Vec<AppColumn>, DbError> {
+    if headers.len() != columns.len() {
+        return Err(DbError::InvalidInput(format!(
+            "CSV header count must match table columns: expected {}, got {}",
+            columns.len(),
+            headers.len()
+        )));
+    }
+
+    let mut resolved = Vec::with_capacity(headers.len());
+    let mut used_column_ids = HashSet::new();
+    for header in headers.iter() {
+        let matches = columns
+            .iter()
+            .filter(|column| column.column_name == header || column.display_name == header)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(DbError::InvalidInput(format!(
+                "CSV header `{}` does not uniquely match a table column",
+                header
+            )));
+        }
+
+        let column = matches[0];
+        if !used_column_ids.insert(column.id) {
+            return Err(DbError::InvalidInput(format!(
+                "CSV column `{}` is mapped more than once",
+                column.display_name
+            )));
+        }
+        resolved.push(column.clone());
+    }
+
+    if !resolved.iter().any(|column| column.column_name == "id") {
+        return Err(DbError::InvalidInput("CSV header must include id".into()));
+    }
+    Ok(resolved)
+}
+
+fn csv_record_to_values(
+    record: &csv::StringRecord,
+    header_columns: &[AppColumn],
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+    row_number: usize,
+) -> Result<HashMap<String, Value>, DbError> {
+    let mut values = HashMap::new();
+    for (index, column) in header_columns.iter().enumerate() {
+        let raw = record.get(index).unwrap_or_default();
+        // CSVはすべて文字列なので、DB保存前にカラム型に合わせたJSON値へ変換します。
+        let value = csv_cell_to_value(column, raw, select_option_maps, row_number)?;
+        if column.column_name != "id" && column.is_required && is_required_value_empty(Some(&value))
+        {
+            return Err(DbError::InvalidInput(format!(
+                "row {}: {} is required",
+                row_number, column.display_name
+            )));
+        }
+        values.insert(column.column_name.clone(), value);
+    }
+    Ok(values)
+}
+
+fn csv_cell_to_value(
+    column: &AppColumn,
+    raw: &str,
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+    row_number: usize,
+) -> Result<Value, DbError> {
+    let text = raw.trim();
+    if text.is_empty() {
+        // 空セルは未入力として扱い、必須チェックは呼び出し元で行います。
+        return Ok(Value::Null);
+    }
+
+    match column.field_type.as_str() {
+        "integer" | "date" => text.parse::<i64>().map(Value::from).map_err(|_| {
+            DbError::InvalidInput(format!(
+                "row {}: {} must be an integer",
+                row_number, column.display_name
+            ))
+        }),
+        "real" => text.parse::<f64>().map(Value::from).map_err(|_| {
+            DbError::InvalidInput(format!(
+                "row {}: {} must be a number",
+                row_number, column.display_name
+            ))
+        }),
+        "boolean" => match text {
+            "true" | "1" => Ok(Value::from(true)),
+            "false" | "0" => Ok(Value::from(false)),
+            _ => Err(DbError::InvalidInput(format!(
+                "row {}: {} must be true, false, 1, or 0",
+                row_number, column.display_name
+            ))),
+        },
+        "single_select" => {
+            let option_no = select_option_maps
+                .get(&column.column_name)
+                .and_then(|options| options.get(text))
+                .copied()
+                .ok_or_else(|| {
+                    DbError::InvalidInput(format!(
+                        "row {}: {} does not match an option",
+                        row_number, column.display_name
+                    ))
+                })?;
+            Ok(Value::from(option_no))
+        }
+        "reference" => {
+            // エクスポート値は「ID:表示名」なので、コロンより前のIDだけ取り出します。
+            let id_text = text.split_once(':').map(|(id, _)| id).unwrap_or(text);
+            id_text.trim().parse::<i64>().map(Value::from).map_err(|_| {
+                DbError::InvalidInput(format!(
+                    "row {}: {} must be a reference id",
+                    row_number, column.display_name
+                ))
+            })
+        }
+        _ => Ok(Value::String(raw.to_string())),
+    }
+}
+
+fn csv_row_id(values: &HashMap<String, Value>, row_number: usize) -> Result<i64, DbError> {
+    // IDを使う方式では、CSV行のidが空または数値以外なら処理できません。
+    values
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| DbError::InvalidInput(format!("row {}: id is required", row_number)))
+}
+
+fn csv_record_exists(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    id: i64,
+) -> Result<bool, DbError> {
+    // 重複判定だけなので、存在すれば1行返す軽いSELECTにしています。
+    conn.query_row(
+        &format!("SELECT 1 FROM \"{}\" WHERE id = ?", table_name),
+        [id],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|value| value.is_some())
+    .map_err(DbError::from)
+}
+
+fn csv_insert_record(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    columns: &[AppColumn],
+    values: &HashMap<String, Value>,
+    include_id: bool,
+) -> Result<(), DbError> {
+    // include_id=false のときはid列をINSERT対象から外し、SQLiteに自動採番させます。
+    let target_columns = columns
+        .iter()
+        .filter(|column| include_id || column.column_name != "id")
+        .collect::<Vec<_>>();
+    let column_names = target_columns
+        .iter()
+        .map(|column| format!("\"{}\"", column.column_name))
+        .collect::<Vec<_>>();
+    let placeholders = std::iter::repeat("?")
+        .take(target_columns.len())
+        .collect::<Vec<_>>();
+    let sql_values = target_columns
+        .iter()
+        .map(|column| to_sql_value(values.get(&column.column_name), &column.field_type))
+        .collect::<Vec<_>>();
+    conn.execute(
+        &format!(
+            "INSERT INTO \"{}\" ({}) VALUES ({})",
+            table_name,
+            column_names.join(", "),
+            placeholders.join(", ")
+        ),
+        params_from_iter(sql_values.iter().map(|value| value.as_ref())),
+    )?;
+    Ok(())
+}
+
+fn csv_update_record(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    columns: &[AppColumn],
+    values: &HashMap<String, Value>,
+    id: i64,
+) -> Result<(), DbError> {
+    // 置き換え方式でもidは変更せず、非IDカラムだけをCSV内容で更新します。
+    let target_columns = columns
+        .iter()
+        .filter(|column| column.column_name != "id")
+        .collect::<Vec<_>>();
+    let assignments = target_columns
+        .iter()
+        .map(|column| format!("\"{}\" = ?", column.column_name))
+        .collect::<Vec<_>>();
+    let mut sql_values = target_columns
+        .iter()
+        .map(|column| to_sql_value(values.get(&column.column_name), &column.field_type))
+        .collect::<Vec<_>>();
+    sql_values.push(Box::new(id));
+    conn.execute(
+        &format!(
+            "UPDATE \"{}\" SET {} WHERE id = ?",
+            table_name,
+            assignments.join(", ")
+        ),
+        params_from_iter(sql_values.iter().map(|value| value.as_ref())),
+    )?;
+    Ok(())
 }
 
 fn sqlite_value_to_json(value: ValueRef<'_>) -> Result<Value, rusqlite::Error> {
