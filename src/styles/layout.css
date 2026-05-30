@@ -640,15 +640,34 @@
   font-size: 0.82rem;
 }
 
+/* アプリメニューとモード切替は役割が違うため、細い線でグループを分けます。 */
+.app-window-menu-items::after {
+  content: "";
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin-inline: 0.45rem 0.2rem;
+  background: rgba(var(--v-theme-outline), 0.28);
+}
+
 .app-window-menu-items .v-btn {
   min-width: 0;
   padding-inline: 0.65rem;
   letter-spacing: 0;
 }
 
-.app-window-mode-tabs {
+.app-window-mode-group {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
   flex: 0 1 520px;
   min-width: 220px;
+  overflow: hidden;
+}
+
+.app-window-mode-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .app-window-mode-tabs.mode-tabs-titlebar {
