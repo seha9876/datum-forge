@@ -3,16 +3,24 @@ import { computed, nextTick, ref } from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
+import {
+  buildFolderItem,
+  countDescendants,
+  findFolderItem,
+  findFolderNodeById,
+  findRecordItem,
+  folderItemId,
+  folderRecordItemId,
+  searchManualTreeItem,
+  type ManualTreeItem
+} from "./ManualNavTree.helpers";
+
 import type {
   ViewNavFolderRecord,
   ViewNavTreeNode,
   ViewSelection
 } from "../../../types";
 
-/**
- * カスタム目次に必要なフォルダ一覧と操作関数です。
- * フォルダ作成・削除・選択の実処理は親が持ち、この部品は UI と入力状態を担当します。
- */
 const props = defineProps<{
   isExpanded: (folderId: number) => boolean;
   nodes: ViewNavTreeNode[];
@@ -31,27 +39,6 @@ const props = defineProps<{
 }>();
 
 const confirmDialog = useConfirmDialog();
-
-/**
- * v-treeview に渡す 1 行分のデータ型です。
- * フォルダ行とレコード行で持つ情報が違うため、kind で分岐できるようにしています。
- */
-type ManualTreeItem =
-  | {
-      id: string;
-      kind: "folder";
-      title: string;
-      searchText: string;
-      node: ViewNavTreeNode;
-      children: ManualTreeItem[];
-    }
-  | {
-      id: string;
-      kind: "record";
-      title: string;
-      searchText: string;
-      record: ViewNavFolderRecord;
-    };
 
 /** 目次上でドラッグ中の項目を、マウスへ追従させるプレビュー表示の情報です。 */
 interface ManualTreeDragPreview {
@@ -99,103 +86,6 @@ const dropIndicator = ref<ManualTreeDropIndicator | null>(null);
 const pendingDrag = ref<ManualTreePendingDrag | null>(null);
 let latestPreviewPoint = { x: 0, y: 0 };
 let previewAnimationFrame: number | null = null;
-
-/** フォルダ行を v-treeview 内で一意に見分ける ID を作ります。 */
-function folderItemId(folderId: number) {
-  return `folder:${folderId}`;
-}
-
-/** フォルダ内レコード行を v-treeview 内で一意に見分ける ID を作ります。 */
-function folderRecordItemId(folderRecordId: number) {
-  return `folder-record:${folderRecordId}`;
-}
-
-/** `1:田中 太郎` のような保存済みラベルから、表示用の名前部分を取り出します。 */
-function folderRecordLabel(record: ViewNavFolderRecord) {
-  return record.recordLabel.replace(/^\d+:/, "") || record.recordLabel;
-}
-
-/** 削除確認で表示するため、指定フォルダ配下にある子孫フォルダ数を数えます。 */
-function countDescendants(node: ViewNavTreeNode): number {
-  return node.children.reduce(
-    (total, child) => total + 1 + countDescendants(child),
-    0
-  );
-}
-
-/**
- * フォルダ行を検索するときに使う文字列です。
- * 祖先フォルダ名も含めることで、親フォルダ名で配下の項目も探しやすくします。
- */
-function folderSearchText(node: ViewNavTreeNode, ancestors: string[]) {
-  return [...ancestors, node.name].join(" ");
-}
-
-/**
- * フォルダ内レコードを検索するときに使う文字列です。
- * レコード名、ID、テーブル名、祖先フォルダ名をまとめて検索対象にします。
- */
-function folderRecordSearchText(
-  record: ViewNavFolderRecord,
-  label: string,
-  ancestors: string[]
-) {
-  return [
-    ...ancestors,
-    record.recordId,
-    record.recordLabel,
-    label,
-    record.tableName,
-    record.tableDisplayName
-  ].join(" ");
-}
-
-/**
- * v-treeview の検索で、画面表示用のタイトルではなく searchText を見ます。
- * カスタム目次はフォルダ名・祖先フォルダ名・レコード情報を searchText にまとめているため、
- * Vuetify の custom-filter に渡る filter key の値だけを見て検索漏れを防ぎます。
- */
-function searchManualTreeItem(value: string, query: string) {
-  const keyword = query.trim().toLocaleLowerCase();
-  if (!keyword) {
-    return true;
-  }
-
-  return value.toLocaleLowerCase().includes(keyword);
-}
-
-/**
- * 保存済みフォルダを、v-treeview が扱える親子データへ変換します。
- * 子フォルダを先に、その下にフォルダへ紐づけたレコードを並べます。
- */
-function buildFolderItem(
-  node: ViewNavTreeNode,
-  ancestors: string[] = []
-): ManualTreeItem {
-  const currentPath = [...ancestors, node.name];
-
-  return {
-    id: folderItemId(node.id),
-    kind: "folder",
-    title: node.name,
-    searchText: folderSearchText(node, ancestors),
-    node,
-    children: [
-      ...node.children.map((child) => buildFolderItem(child, currentPath)),
-      ...node.records.map((record) => {
-        const label = folderRecordLabel(record);
-
-        return {
-          id: folderRecordItemId(record.id),
-          kind: "record" as const,
-          title: label,
-          searchText: folderRecordSearchText(record, label, currentPath),
-          record
-        };
-      })
-    ]
-  };
-}
 
 /** 親から渡されたフォルダ一覧を、v-treeview 標準のネスト構造へ変換します。 */
 const treeItems = computed(() =>
@@ -248,72 +138,6 @@ const activatedItemIds = computed(() => {
   props.nodes.forEach(collect);
   return matchedRecordIds;
 });
-
-/**
- * v-treeview から渡された ID に対応するフォルダ行を探します。
- * 再帰的に children をたどるので、深い階層のフォルダも見つけられます。
- */
-function findFolderItem(
-  items: ManualTreeItem[],
-  itemId: string
-): Extract<ManualTreeItem, { kind: "folder" }> | null {
-  for (const item of items) {
-    if (item.kind === "folder" && item.id === itemId) {
-      return item;
-    }
-
-    if (item.kind === "folder") {
-      const childMatch = findFolderItem(item.children, itemId);
-      if (childMatch) {
-        return childMatch;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * v-treeview から渡された ID に対応するレコード行を探します。
- * 見つからない場合は、フォルダ行などが押されたものとして null を返します。
- */
-function findRecordItem(
-  items: ManualTreeItem[],
-  itemId: string
-): Extract<ManualTreeItem, { kind: "record" }> | null {
-  for (const item of items) {
-    if (item.kind === "record" && item.id === itemId) {
-      return item;
-    }
-
-    if (item.kind === "folder") {
-      const childMatch = findRecordItem(item.children, itemId);
-      if (childMatch) {
-        return childMatch;
-      }
-    }
-  }
-
-  return null;
-}
-
-function findFolderNodeById(
-  nodes: ViewNavTreeNode[],
-  folderId: number
-): ViewNavTreeNode | null {
-  for (const node of nodes) {
-    if (node.id === folderId) {
-      return node;
-    }
-
-    const childMatch = findFolderNodeById(node.children, folderId);
-    if (childMatch) {
-      return childMatch;
-    }
-  }
-
-  return null;
-}
 
 /** イベント発生元やポインター直下の DOM から、Vuetify の tree item 行を探します。 */
 function findManualTreeRowElement(target: EventTarget | null) {
