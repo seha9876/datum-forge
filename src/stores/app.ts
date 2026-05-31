@@ -12,7 +12,12 @@ import type {
   DeleteRecordPayload,
   DeleteTablePayload,
   ExportTableCsvPayload,
+  ImportExcelTablePayload,
   ImportTableCsvPayload,
+  InspectCsvImportPayload,
+  InspectExcelTablesPayload,
+  PreviewCsvImportPayload,
+  PreviewExcelTableImportPayload,
   ReorderColumnsPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
@@ -132,6 +137,55 @@ export const useAppStore = defineStore("app", {
       this.error = "";
       try {
         const result = await api.importTableCsv(payload);
+        await this.initialize();
+        await this.loadTable(payload.tableId);
+        return result;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async inspectCsvImport(payload: InspectCsvImportPayload) {
+      this.error = "";
+      try {
+        return await api.inspectCsvImport(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async previewCsvImport(payload: PreviewCsvImportPayload) {
+      this.error = "";
+      try {
+        return await api.previewCsvImport(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async inspectExcelTables(payload: InspectExcelTablesPayload) {
+      this.error = "";
+      try {
+        return await api.inspectExcelTables(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async previewExcelTableImport(payload: PreviewExcelTableImportPayload) {
+      this.error = "";
+      try {
+        return await api.previewExcelTableImport(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async importExcelTable(payload: ImportExcelTablePayload) {
+      this.error = "";
+      try {
+        const result = await api.importExcelTable(payload);
+        this.settings = await api.getAppSettings();
         await this.initialize();
         await this.loadTable(payload.tableId);
         return result;

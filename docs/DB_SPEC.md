@@ -39,6 +39,15 @@ CSVインポートの処理結果はDBへ保存せず、Tauri commandの戻り�
 - `すべて新しい行として追加` では、CSVのIDをINSERT対象から外し、SQLiteの自動採番に任せる。
 - `同じIDの行は上書き` では、既存IDの非IDカラムを更新し、存在しないIDはCSVのIDを維持して追加する。
 
+### Excelインポート
+
+- Excelインポートはユーザー定義DBへ新しいメタテーブルを追加せず、CSVインポートと同じユーザー定義テーブル、`app_table_columns`、型変換ルールを使って処理する。
+- 対象ファイルは `.xlsx` / `.xlsm` とし、OpenXML内のExcelテーブル定義を読み取る。Excelテーブルとして定義されていない通常範囲やシート全体は対象外とする。
+- Excelテーブル一覧取得、プレビュー、実行はTauri commandで分ける。プレビューではDBを書き換えず、実行時のみ1トランザクションで追加/更新する。
+- 列マッピングはDatum Forge側の全カラムを対象にし、`id` も必須とする。Excel列との初期対応は `column_name` または `display_name` の完全一致で作る。
+- 差分確認は既存CSVインポート方式に合わせ、`id` で既存レコードと照合して追加、更新、変更なし、スキップ予定件数を算出する。
+- 最後に使用したExcelテーブル名はユーザー定義DBではなく `.local/settings.json` の `lastExcelImportTables` に、Datum ForgeテーブルID単位で保存する。
+
 - `text` -> `TEXT`
 - `integer` -> `INTEGER`
 - `real` -> `REAL`

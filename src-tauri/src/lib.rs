@@ -16,17 +16,20 @@ use database::{
     DeleteRecordTagPayload, DeleteTablePayload, DeleteViewLayoutTemplatePayload,
     DeleteViewNavFolderPayload, DetachRecordTagPayload, DuplicateViewLayoutTemplatePayload,
     ExportTableCsvPayload, FolderViewLayoutTemplates, GetResolvedViewFieldLayoutPayload,
-    GetViewLayoutTemplateCardsPayload, ImportTableCsvPayload, ImportTableCsvResult,
-    ListViewLayoutCardColumnBindingsPayload, ListViewLayoutTemplatesForFolderPayload, RecordTag,
-    RecordTagBundle, RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice,
-    RemoveViewNavFolderRecordPayload, RenameViewLayoutTemplatePayload, ReorderColumnsPayload,
-    ReorderViewNavFolderRecordsPayload, ResetViewLayoutCardOverridePayload,
-    ResetViewLayoutCardOverridesPayload, ResolvedViewFieldLayout, SaveOptionGroupPayload,
-    SaveRecordPayload, SaveRecordTagGroupPayload, SaveRecordTagPayload,
-    SaveViewLayoutCardColumnBindingsPayload, SaveViewLayoutCardOverridesPayload,
-    SaveViewLayoutTemplateCardsPayload, StartupDbStatus, TableDetail, UpdateColumnPayload,
-    UpdateLabelColumnPayload, UpdateNotificationSettingsPayload, ViewLayoutCardColumnBinding,
-    ViewLayoutTemplate, ViewLayoutTemplateCard, ViewNavFolderRecord, ViewNavNode, ViewTableSection,
+    GetViewLayoutTemplateCardsPayload, ImportExcelTablePayload, ImportTableCsvPayload,
+    ImportTableCsvResult, InspectCsvImportPayload, InspectCsvImportResult,
+    InspectExcelTablesPayload, InspectExcelTablesResult, ListViewLayoutCardColumnBindingsPayload,
+    ListViewLayoutTemplatesForFolderPayload, PreviewCsvImportPayload, PreviewCsvImportResult,
+    PreviewExcelTableImportPayload, PreviewExcelTableImportResult, RecordTag, RecordTagBundle,
+    RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice, RemoveViewNavFolderRecordPayload,
+    RenameViewLayoutTemplatePayload, ReorderColumnsPayload, ReorderViewNavFolderRecordsPayload,
+    ResetViewLayoutCardOverridePayload, ResetViewLayoutCardOverridesPayload,
+    ResolvedViewFieldLayout, SaveOptionGroupPayload, SaveRecordPayload, SaveRecordTagGroupPayload,
+    SaveRecordTagPayload, SaveViewLayoutCardColumnBindingsPayload,
+    SaveViewLayoutCardOverridesPayload, SaveViewLayoutTemplateCardsPayload, StartupDbStatus,
+    TableDetail, UpdateColumnPayload, UpdateLabelColumnPayload, UpdateNotificationSettingsPayload,
+    ViewLayoutCardColumnBinding, ViewLayoutTemplate, ViewLayoutTemplateCard, ViewNavFolderRecord,
+    ViewNavNode, ViewTableSection,
 };
 use tauri::State;
 
@@ -248,6 +251,81 @@ fn import_table_csv(
         .as_mut()
         .ok_or_else(db_not_ready_error)?
         .import_table_csv(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn inspect_csv_import(
+    state: State<'_, AppState>,
+    payload: InspectCsvImportPayload,
+) -> Result<InspectCsvImportResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .inspect_csv_import(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn preview_csv_import(
+    state: State<'_, AppState>,
+    payload: PreviewCsvImportPayload,
+) -> Result<PreviewCsvImportResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .preview_csv_import(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn inspect_excel_tables(
+    state: State<'_, AppState>,
+    payload: InspectExcelTablesPayload,
+) -> Result<InspectExcelTablesResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .inspect_excel_tables(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn preview_excel_table_import(
+    state: State<'_, AppState>,
+    payload: PreviewExcelTableImportPayload,
+) -> Result<PreviewExcelTableImportResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .preview_excel_table_import(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_excel_table(
+    state: State<'_, AppState>,
+    payload: ImportExcelTablePayload,
+) -> Result<ImportTableCsvResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_mut()
+        .ok_or_else(db_not_ready_error)?
+        .import_excel_table(payload)
         .map_err(|e| e.to_string())
 }
 
@@ -926,6 +1004,11 @@ pub fn run() {
             delete_table,
             export_table_csv,
             import_table_csv,
+            inspect_csv_import,
+            preview_csv_import,
+            inspect_excel_tables,
+            preview_excel_table_import,
+            import_excel_table,
             add_column,
             delete_column,
             update_column,

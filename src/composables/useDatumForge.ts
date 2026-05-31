@@ -7,6 +7,7 @@ import type {
   AppColumn,
   FieldType,
   ImportTableCsvMode,
+  ImportColumnMappingPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
   SelectOptionGroup,
@@ -505,9 +506,71 @@ export function useDatumForge() {
   async function importTableCsv(
     tableId: number,
     inputPath: string,
-    mode: ImportTableCsvMode
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
   ) {
-    const result = await store.importTableCsv({ tableId, inputPath, mode });
+    const result = await store.importTableCsv({
+      tableId,
+      inputPath,
+      mode,
+      columnMapping
+    });
+    resetRecordForm();
+    return result;
+  }
+
+  async function inspectCsvImport(tableId: number, inputPath: string) {
+    return await store.inspectCsvImport({ tableId, inputPath });
+  }
+
+  async function previewCsvImport(
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) {
+    return await store.previewCsvImport({
+      tableId,
+      inputPath,
+      mode,
+      columnMapping
+    });
+  }
+
+  async function inspectExcelTables(tableId: number, inputPath: string) {
+    return await store.inspectExcelTables({ tableId, inputPath });
+  }
+
+  async function previewExcelTableImport(
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) {
+    return await store.previewExcelTableImport({
+      tableId,
+      inputPath,
+      excelTableName,
+      mode,
+      columnMapping
+    });
+  }
+
+  async function importExcelTable(
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) {
+    const result = await store.importExcelTable({
+      tableId,
+      inputPath,
+      excelTableName,
+      mode,
+      columnMapping
+    });
     resetRecordForm();
     return result;
   }
@@ -524,6 +587,11 @@ export function useDatumForge() {
     deleteRecord,
     deleteTable,
     exportTableCsv,
+    inspectCsvImport,
+    inspectExcelTables,
+    previewCsvImport,
+    previewExcelTableImport,
+    importExcelTable,
     importTableCsv,
     editingRecordId,
     fieldTypes,

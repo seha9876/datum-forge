@@ -4,21 +4,29 @@ import { ref } from "vue";
 
 import { useAppNotifications } from "../composables/useAppNotifications";
 import { useConfirmDialog } from "../composables/useConfirmDialog";
+import { formatImportNotificationDetails } from "../utils/importErrorMessages";
+
+import TableImportDialog from "./TableImportDialog.vue";
 
 import type {
   AppBootstrap,
   AppTableSummary,
+  ImportColumnMappingPayload,
   ImportTableCsvMode,
-  ImportTableCsvResult
+  ImportTableCsvResult,
+  InspectCsvImportResult,
+  InspectExcelTablesResult,
+  PreviewCsvImportResult,
+  PreviewExcelTableImportResult
 } from "../types";
 
-/** CSVインポートで最後に使った方式をブラウザ内へ保存するためのキーです。 */
-const CSV_IMPORT_MODE_STORAGE_KEY = "datum-forge:csv-import-mode";
+/** CSV/Excel共通のインポート方式をブラウザ内へ保存するためのキーです。 */
+const TABLE_IMPORT_MODE_STORAGE_KEY = "datum-forge:csv-import-mode";
 /** 初回インポート時に使う方式です。既存IDを壊しにくい安全寄りの方式にしています。 */
-const DEFAULT_CSV_IMPORT_MODE: ImportTableCsvMode = "skipExistingPrimaryKeys";
+const DEFAULT_TABLE_IMPORT_MODE: ImportTableCsvMode = "skipExistingPrimaryKeys";
 
-/** サブメニューに出すインポート方式の内部ID一覧です。表示文言は下の関数で作ります。 */
-const CSV_IMPORT_MODE_ITEMS: Array<{
+/** サブメニューに出すインポート方式の内部ID一覧です。CSV/Excelで共通利用します。 */
+const TABLE_IMPORT_MODE_ITEMS: Array<{
   mode: ImportTableCsvMode;
   label: string;
 }> = [
@@ -51,35 +59,72 @@ const props = defineProps<{
   selectedTableId: number | null;
   onDeleteTable: (tableId: number) => Promise<void>;
   onExportTableCsv: (tableId: number, outputPath: string) => Promise<void>;
+  onImportExcelTable: (
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) => Promise<ImportTableCsvResult>;
   onImportTableCsv: (
     tableId: number,
     inputPath: string,
-    mode: ImportTableCsvMode
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
+  onInspectCsvImport: (
+    tableId: number,
+    inputPath: string
+  ) => Promise<InspectCsvImportResult>;
+  onInspectExcelTables: (
+    tableId: number,
+    inputPath: string
+  ) => Promise<InspectExcelTablesResult>;
   onLoadTable: (tableId: number) => Promise<void>;
   onOpenCreateDialog: () => void;
+  onPreviewExcelTableImport: (
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) => Promise<PreviewExcelTableImportResult>;
+  onPreviewCsvImport: (
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ImportColumnMappingPayload[]
+  ) => Promise<PreviewCsvImportResult>;
 }>();
 
 const confirmDialog = useConfirmDialog();
 const appNotifications = useAppNotifications();
-/** 通常クリック時に使う、現在選択中のCSVインポート方式です。 */
-const selectedImportMode = ref<ImportTableCsvMode>(loadCsvImportMode());
+/** 通常クリック時に使う、現在選択中の共通インポート方式です。 */
+const selectedImportMode = ref<ImportTableCsvMode>(loadTableImportMode());
+const isTableImportDialogOpen = ref(false);
+const importSourceKind = ref<"csv" | "excel">("excel");
+const tableImportTable = ref<AppTableSummary | null>(null);
+const tableImportInputPath = ref("");
+const tableImportExcelInspectResult = ref<InspectExcelTablesResult | null>(
+  null
+);
+const csvImportInspectResult = ref<InspectCsvImportResult | null>(null);
 
 /** localStorageから読んだ文字列が、実際にサポートしている方式か確認します。 */
 function isImportMode(value: string | null): value is ImportTableCsvMode {
-  return CSV_IMPORT_MODE_ITEMS.some((item) => item.mode === value);
+  return TABLE_IMPORT_MODE_ITEMS.some((item) => item.mode === value);
 }
 
 /** 前回選んだインポート方式を読み込みます。壊れた値なら初期方式に戻します。 */
-function loadCsvImportMode() {
-  const savedMode = window.localStorage.getItem(CSV_IMPORT_MODE_STORAGE_KEY);
-  return isImportMode(savedMode) ? savedMode : DEFAULT_CSV_IMPORT_MODE;
+function loadTableImportMode() {
+  const savedMode = window.localStorage.getItem(TABLE_IMPORT_MODE_STORAGE_KEY);
+  return isImportMode(savedMode) ? savedMode : DEFAULT_TABLE_IMPORT_MODE;
 }
 
 /** インポート方式を画面状態とlocalStorageの両方へ保存します。 */
-function saveCsvImportMode(mode: ImportTableCsvMode) {
+function saveTableImportMode(mode: ImportTableCsvMode) {
   selectedImportMode.value = mode;
-  window.localStorage.setItem(CSV_IMPORT_MODE_STORAGE_KEY, mode);
+  window.localStorage.setItem(TABLE_IMPORT_MODE_STORAGE_KEY, mode);
 }
 
 /** サブメニューで太字相当に見える、短い方式名を返します。 */
@@ -116,8 +161,18 @@ function importResultMessage(status: ImportTableCsvResult["status"]) {
     : "CSVの取り込みが完了しました。";
 }
 
+function excelResultMessage(status: ImportTableCsvResult["status"]) {
+  return status === "warning"
+    ? "Excelの取り込みは完了しましたが、確認が必要な行があります。"
+    : "Excelの取り込みが完了しました。";
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function selectedPathExtension(path: string) {
+  return path.split(".").pop()?.toLowerCase() ?? "";
 }
 
 /** レール表示の丸アイコンへ入れる、テーブル名の先頭1文字を返します。 */
@@ -167,18 +222,80 @@ async function handleExportTableCsv(table: AppTableSummary) {
   await props.onExportTableCsv(table.id, ensureCsvExtension(outputPath));
 }
 
-/** CSVファイルを選んでから、選択中の方式でRust側のインポート処理へ渡します。 */
-async function handleImportTableCsv(
+async function prepareCsvImport(table: AppTableSummary, inputPath: string) {
+  try {
+    importSourceKind.value = "csv";
+    tableImportTable.value = table;
+    tableImportInputPath.value = inputPath;
+    tableImportExcelInspectResult.value = null;
+    csvImportInspectResult.value = await props.onInspectCsvImport(
+      table.id,
+      inputPath
+    );
+    isTableImportDialogOpen.value = true;
+  } catch (error) {
+    appNotifications.notify({
+      kind: "error",
+      title: "インポートエラー",
+      message: "CSVファイルの確認に失敗しました。",
+      metrics: {
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 1
+      },
+      details: formatImportNotificationDetails([errorMessage(error)])
+    });
+  }
+}
+
+async function prepareExcelImport(table: AppTableSummary, inputPath: string) {
+  try {
+    importSourceKind.value = "excel";
+    tableImportTable.value = table;
+    tableImportInputPath.value = inputPath;
+    csvImportInspectResult.value = null;
+    tableImportExcelInspectResult.value = await props.onInspectExcelTables(
+      table.id,
+      inputPath
+    );
+    isTableImportDialogOpen.value = true;
+  } catch (error) {
+    appNotifications.notify({
+      kind: "error",
+      title: "Excelインポートエラー",
+      message: "Excelファイルの確認に失敗しました。",
+      metrics: {
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 1
+      },
+      details: formatImportNotificationDetails([errorMessage(error)])
+    });
+  }
+}
+
+/** CSV/Excelを同じ入口から選び、拡張子に応じて処理を分岐します。 */
+async function handleImportTable(
   table: AppTableSummary,
   mode = selectedImportMode.value
 ) {
-  saveCsvImportMode(mode);
+  saveTableImportMode(mode);
   const inputPath = await open({
     multiple: false,
     filters: [
       {
+        name: "インポート可能ファイル",
+        extensions: ["csv", "xlsx", "xlsm"]
+      },
+      {
         name: "CSV",
         extensions: ["csv"]
+      },
+      {
+        name: "Excel",
+        extensions: ["xlsx", "xlsm"]
       }
     ]
   });
@@ -187,40 +304,66 @@ async function handleImportTableCsv(
     return;
   }
 
-  try {
-    const result = await props.onImportTableCsv(table.id, inputPath, mode);
-    if (!result) {
-      throw new Error(
-        "インポート結果を取得できませんでした。アプリを再起動してから再実行してください。"
-      );
-    }
-    appNotifications.notify({
-      kind: result.status,
-      title: importResultTitle(result.status),
-      message: importResultMessage(result.status),
-      metrics: {
-        insertedCount: result.insertedCount,
-        updatedCount: result.updatedCount,
-        skippedCount: result.skippedCount,
-        errorCount: result.errorCount
-      },
-      details: result.details
-    });
-  } catch (error) {
-    const message = errorMessage(error);
-    appNotifications.notify({
-      kind: "error",
-      title: "インポートエラー",
-      message: "CSVの取り込みに失敗しました。",
-      metrics: {
-        insertedCount: 0,
-        updatedCount: 0,
-        skippedCount: 0,
-        errorCount: 1
-      },
-      details: [message]
-    });
+  const extension = selectedPathExtension(inputPath);
+  if (extension === "csv") {
+    await prepareCsvImport(table, inputPath);
+    return;
   }
+  if (extension === "xlsx" || extension === "xlsm") {
+    await prepareExcelImport(table, inputPath);
+    return;
+  }
+
+  appNotifications.notify({
+    kind: "error",
+    title: "インポートエラー",
+    message: "CSVまたはExcelファイルを選択してください。",
+    metrics: {
+      insertedCount: 0,
+      updatedCount: 0,
+      skippedCount: 0,
+      errorCount: 1
+    },
+    details: formatImportNotificationDetails([
+      `未対応の拡張子です: .${extension || "なし"}`
+    ])
+  });
+}
+
+function notifyTableImportResult(result: ImportTableCsvResult) {
+  const isExcel = importSourceKind.value === "excel";
+  appNotifications.notify({
+    kind: result.status,
+    title: importResultTitle(result.status),
+    message: isExcel
+      ? excelResultMessage(result.status)
+      : importResultMessage(result.status),
+    metrics: {
+      insertedCount: result.insertedCount,
+      updatedCount: result.updatedCount,
+      skippedCount: result.skippedCount,
+      errorCount: result.errorCount
+    },
+    details: formatImportNotificationDetails(result.details)
+  });
+}
+
+function notifyTableImportError(error: unknown) {
+  const isExcel = importSourceKind.value === "excel";
+  appNotifications.notify({
+    kind: "error",
+    title: isExcel ? "Excelインポートエラー" : "インポートエラー",
+    message: isExcel
+      ? "Excelの取り込みに失敗しました。"
+      : "CSVの取り込みに失敗しました。",
+    metrics: {
+      insertedCount: 0,
+      updatedCount: 0,
+      skippedCount: 0,
+      errorCount: 1
+    },
+    details: formatImportNotificationDetails([errorMessage(error)])
+  });
 }
 
 async function handleDeleteTable(table: AppTableSummary) {
@@ -378,21 +521,21 @@ async function handleDeleteTable(table: AppTableSummary) {
                           v-bind="importMenuProps"
                           prepend-icon="mdi-file-import-outline"
                           append-icon="mdi-chevron-right"
-                          @click.stop="handleImportTableCsv(table)"
+                          @click.stop="handleImportTable(table)"
                         >
-                          <v-list-item-title> CSVインポート </v-list-item-title>
+                          <v-list-item-title> インポート </v-list-item-title>
                         </v-list-item>
                       </template>
                       <v-list density="compact" min-width="280">
                         <v-list-item
-                          v-for="item in CSV_IMPORT_MODE_ITEMS"
+                          v-for="item in TABLE_IMPORT_MODE_ITEMS"
                           :key="item.mode"
                           :prepend-icon="
                             selectedImportMode === item.mode
                               ? 'mdi-check'
                               : 'mdi-blank'
                           "
-                          @click.stop="handleImportTableCsv(table, item.mode)"
+                          @click.stop="handleImportTable(table, item.mode)"
                         >
                           <v-list-item-title>
                             {{ csvImportModeLabel(item.mode) }}
@@ -434,4 +577,20 @@ async function handleDeleteTable(table: AppTableSummary) {
       </div>
     </template>
   </div>
+
+  <TableImportDialog
+    v-model="isTableImportDialogOpen"
+    :source-kind="importSourceKind"
+    :table="tableImportTable"
+    :input-path="tableImportInputPath"
+    :csv-inspect-result="csvImportInspectResult"
+    :inspect-result="tableImportExcelInspectResult"
+    :mode="selectedImportMode"
+    :on-preview-csv="onPreviewCsvImport"
+    :on-preview="onPreviewExcelTableImport"
+    :on-import-csv="onImportTableCsv"
+    :on-import="onImportExcelTable"
+    @imported="notifyTableImportResult"
+    @error="notifyTableImportError"
+  />
 </template>

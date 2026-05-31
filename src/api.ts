@@ -25,10 +25,19 @@ import type {
   FolderViewLayoutTemplates,
   GetViewLayoutTemplateCardsPayload,
   GetResolvedViewFieldLayoutPayload,
+  ImportExcelTablePayload,
   ImportTableCsvPayload,
   ImportTableCsvResult,
+  InspectCsvImportPayload,
+  InspectCsvImportResult,
+  InspectExcelTablesPayload,
+  InspectExcelTablesResult,
   ListViewLayoutCardColumnBindingsPayload,
   ListViewLayoutTemplatesForFolderPayload,
+  PreviewCsvImportPayload,
+  PreviewCsvImportResult,
+  PreviewExcelTableImportPayload,
+  PreviewExcelTableImportResult,
   ReferenceChoice,
   RecordTag,
   RecordTagBundle,
@@ -111,6 +120,18 @@ export const api = {
   /** 選択されたCSVを指定方式で対象テーブルへ取り込みます。 */
   importTableCsv: (payload: ImportTableCsvPayload) =>
     invoke<ImportTableCsvResult>("import_table_csv", { payload }),
+  inspectCsvImport: (payload: InspectCsvImportPayload) =>
+    invoke<InspectCsvImportResult>("inspect_csv_import", { payload }),
+  previewCsvImport: (payload: PreviewCsvImportPayload) =>
+    invoke<PreviewCsvImportResult>("preview_csv_import", { payload }),
+  inspectExcelTables: (payload: InspectExcelTablesPayload) =>
+    invoke<InspectExcelTablesResult>("inspect_excel_tables", { payload }),
+  previewExcelTableImport: (payload: PreviewExcelTableImportPayload) =>
+    invoke<PreviewExcelTableImportResult>("preview_excel_table_import", {
+      payload
+    }),
+  importExcelTable: (payload: ImportExcelTablePayload) =>
+    invoke<ImportTableCsvResult>("import_excel_table", { payload }),
   /**
    * テーブルに新しいカラムを追加します。
    *
