@@ -31,6 +31,23 @@ struct AppSettingsFile {
     db_path: PathBuf,
     #[serde(default)]
     show_record_ids_in_navigation: Option<bool>,
+    #[serde(default)]
+    notification_settings: Option<NotificationSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    #[serde(default)]
+    pub use_per_kind_durations: bool,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub common_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub success_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub warning_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub error_duration_seconds: i64,
 }
 
 /// Frontend settings payload for the database location.
@@ -39,6 +56,13 @@ struct AppSettingsFile {
 pub struct AppSettings {
     pub db_path: String,
     pub show_record_ids_in_navigation: bool,
+    pub notification_settings: NotificationSettings,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNotificationSettingsPayload {
+    pub notification_settings: NotificationSettings,
 }
 
 #[derive(Debug, Serialize)]
@@ -727,19 +751,26 @@ fn save_settings(db_path: &Path) -> Result<(), DbError> {
         .ok()
         .and_then(|settings| settings.show_record_ids_in_navigation)
         .unwrap_or(true);
+    let notification_settings = notification_settings_setting();
 
-    save_settings_with_display_settings(db_path, show_record_ids_in_navigation)
+    save_settings_with_app_settings(
+        db_path,
+        show_record_ids_in_navigation,
+        notification_settings,
+    )
 }
 
-fn save_settings_with_display_settings(
+fn save_settings_with_app_settings(
     db_path: &Path,
     show_record_ids_in_navigation: bool,
+    notification_settings: NotificationSettings,
 ) -> Result<(), DbError> {
     let path = settings_path()?;
     ensure_parent_dir(&path)?;
     let settings = AppSettingsFile {
         db_path: db_path.to_path_buf(),
         show_record_ids_in_navigation: Some(show_record_ids_in_navigation),
+        notification_settings: Some(normalize_notification_settings(notification_settings)),
     };
     let text = serde_json::to_string_pretty(&settings)
         .map_err(|e| DbError::InvalidInput(format!("settings file cannot be written: {e}")))?;
@@ -752,6 +783,50 @@ fn show_record_ids_in_navigation_setting() -> bool {
         .ok()
         .and_then(|settings| settings.show_record_ids_in_navigation)
         .unwrap_or(true)
+}
+
+fn default_notification_duration_seconds() -> i64 {
+    4
+}
+
+fn default_notification_settings() -> NotificationSettings {
+    NotificationSettings {
+        use_per_kind_durations: false,
+        common_duration_seconds: default_notification_duration_seconds(),
+        success_duration_seconds: default_notification_duration_seconds(),
+        warning_duration_seconds: default_notification_duration_seconds(),
+        error_duration_seconds: default_notification_duration_seconds(),
+    }
+}
+
+fn normalize_notification_duration_seconds(value: i64) -> i64 {
+    value.clamp(0, 60)
+}
+
+fn normalize_notification_settings(settings: NotificationSettings) -> NotificationSettings {
+    NotificationSettings {
+        use_per_kind_durations: settings.use_per_kind_durations,
+        common_duration_seconds: normalize_notification_duration_seconds(
+            settings.common_duration_seconds,
+        ),
+        success_duration_seconds: normalize_notification_duration_seconds(
+            settings.success_duration_seconds,
+        ),
+        warning_duration_seconds: normalize_notification_duration_seconds(
+            settings.warning_duration_seconds,
+        ),
+        error_duration_seconds: normalize_notification_duration_seconds(
+            settings.error_duration_seconds,
+        ),
+    }
+}
+
+fn notification_settings_setting() -> NotificationSettings {
+    load_settings()
+        .ok()
+        .and_then(|settings| settings.notification_settings)
+        .map(normalize_notification_settings)
+        .unwrap_or_else(default_notification_settings)
 }
 
 fn db_file_stem(path: &Path) -> String {
@@ -970,11 +1045,24 @@ impl Db {
         AppSettings {
             db_path: self.db_path.to_string_lossy().into_owned(),
             show_record_ids_in_navigation: show_record_ids_in_navigation_setting(),
+            notification_settings: notification_settings_setting(),
         }
     }
 
     pub fn update_record_id_visibility(&mut self, show: bool) -> Result<AppSettings, DbError> {
-        save_settings_with_display_settings(&self.db_path, show)?;
+        save_settings_with_app_settings(&self.db_path, show, notification_settings_setting())?;
+        Ok(self.settings())
+    }
+
+    pub fn update_notification_settings(
+        &mut self,
+        payload: UpdateNotificationSettingsPayload,
+    ) -> Result<AppSettings, DbError> {
+        save_settings_with_app_settings(
+            &self.db_path,
+            show_record_ids_in_navigation_setting(),
+            payload.notification_settings,
+        )?;
         Ok(self.settings())
     }
 

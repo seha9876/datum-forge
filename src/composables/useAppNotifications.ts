@@ -17,11 +17,15 @@ export interface AppNotificationOptions {
   message?: string;
   metrics?: AppNotificationMetrics;
   details?: string[];
-  timeout?: number;
 }
 
-export interface AppNotificationItem extends Required<AppNotificationOptions> {
+export interface AppNotificationItem {
   id: number;
+  kind: AppNotificationKind;
+  title: string;
+  message: string;
+  metrics: AppNotificationMetrics;
+  details: string[];
 }
 
 interface AppNotificationState {
@@ -61,8 +65,7 @@ export function createAppNotifications() {
         title: options.title,
         message: options.message ?? "",
         metrics: options.metrics ?? {},
-        details: options.details ?? [],
-        timeout: options.timeout ?? (options.kind === "success" ? 4000 : -1)
+        details: options.details ?? []
       };
       nextId += 1;
 

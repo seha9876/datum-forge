@@ -189,6 +189,11 @@ async function handleImportTableCsv(
 
   try {
     const result = await props.onImportTableCsv(table.id, inputPath, mode);
+    if (!result) {
+      throw new Error(
+        "インポート結果を取得できませんでした。アプリを再起動してから再実行してください。"
+      );
+    }
     appNotifications.notify({
       kind: result.status,
       title: importResultTitle(result.status),

@@ -410,6 +410,19 @@ export interface AppBootstrap {
 export interface AppSettings {
   dbPath: string;
   showRecordIdsInNavigation: boolean;
+  notificationSettings: NotificationSettings;
+}
+
+export interface NotificationSettings {
+  usePerKindDurations: boolean;
+  commonDurationSeconds: number;
+  successDurationSeconds: number;
+  warningDurationSeconds: number;
+  errorDurationSeconds: number;
+}
+
+export interface UpdateNotificationSettingsPayload {
+  notificationSettings: NotificationSettings;
 }
 
 export type StartupDbState = "ready" | "firstLaunch" | "missingDb" | "error";

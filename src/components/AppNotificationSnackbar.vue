@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 
 import type {
   AppNotificationController,
   AppNotificationKind
 } from "../composables/useAppNotifications";
+import type { NotificationSettings } from "../types";
 
 const props = defineProps<{
   controller: AppNotificationController;
+  notificationSettings?: NotificationSettings;
 }>();
 
 const isDetailsOpen = ref(false);
+const isHovering = ref(false);
+const remainingMs = ref(0);
+const totalMs = ref(0);
+let timerId: number | null = null;
 
 const current = computed(() => props.controller.state.current);
 const hasDetails = computed(() => (current.value?.details.length ?? 0) > 0);
@@ -28,8 +34,77 @@ const colorByKind: Record<AppNotificationKind, string> = {
   info: "primary"
 };
 
+const defaultNotificationSettings: NotificationSettings = {
+  usePerKindDurations: false,
+  commonDurationSeconds: 4,
+  successDurationSeconds: 4,
+  warningDurationSeconds: 4,
+  errorDurationSeconds: 4
+};
+
+const progressValue = computed(() =>
+  totalMs.value > 0 ? (remainingMs.value / totalMs.value) * 100 : 0
+);
+const shouldShowProgress = computed(() => totalMs.value > 0);
+
+function durationSecondsForKind(kind: AppNotificationKind) {
+  const settings = props.notificationSettings ?? defaultNotificationSettings;
+  if (!settings.usePerKindDurations) {
+    return settings.commonDurationSeconds;
+  }
+  switch (kind) {
+    case "success":
+      return settings.successDurationSeconds;
+    case "warning":
+      return settings.warningDurationSeconds;
+    case "error":
+      return settings.errorDurationSeconds;
+    case "info":
+      return settings.commonDurationSeconds;
+  }
+}
+
+function clearTimer() {
+  if (timerId === null) {
+    return;
+  }
+  window.clearInterval(timerId);
+  timerId = null;
+}
+
+function startTimer() {
+  clearTimer();
+  const notification = current.value;
+  if (!notification) {
+    remainingMs.value = 0;
+    totalMs.value = 0;
+    return;
+  }
+
+  const seconds = Math.min(
+    60,
+    Math.max(0, durationSecondsForKind(notification.kind))
+  );
+  remainingMs.value = seconds * 1000;
+  totalMs.value = seconds * 1000;
+  if (seconds === 0) {
+    return;
+  }
+
+  timerId = window.setInterval(() => {
+    if (isHovering.value) {
+      return;
+    }
+    remainingMs.value = Math.max(0, remainingMs.value - 100);
+    if (remainingMs.value === 0) {
+      closeNotification();
+    }
+  }, 100);
+}
+
 /** Snackbarを閉じるときは、詳細ダイアログも一緒に閉じて次の通知へ進めます。 */
 function closeNotification() {
+  clearTimer();
   isDetailsOpen.value = false;
   props.controller.close();
 }
@@ -38,8 +113,22 @@ watch(
   () => current.value?.id,
   () => {
     isDetailsOpen.value = false;
+    isHovering.value = false;
+    startTimer();
   }
 );
+
+watch(
+  () => props.notificationSettings,
+  () => {
+    startTimer();
+  },
+  { deep: true }
+);
+
+onBeforeUnmount(() => {
+  clearTimer();
+});
 </script>
 
 <template>
@@ -49,7 +138,9 @@ watch(
     class="app-notification-snackbar"
     :color="colorByKind[current.kind]"
     location="bottom right"
-    :timeout="current.timeout"
+    :timeout="-1"
+    @mouseenter="isHovering = true"
+    @mouseleave="isHovering = false"
     @update:model-value="!$event && closeNotification()"
   >
     <div class="app-notification-content">
@@ -84,6 +175,14 @@ watch(
       >
         詳細を見る
       </v-btn>
+      <v-progress-linear
+        v-if="shouldShowProgress"
+        class="app-notification-progress"
+        bg-opacity="0.22"
+        color="white"
+        height="3"
+        :model-value="progressValue"
+      />
     </div>
 
     <template #actions>
@@ -160,6 +259,10 @@ watch(
 .app-notification-details-btn {
   justify-self: start;
   padding-inline: 0;
+}
+
+.app-notification-progress {
+  margin-top: 0.15rem;
 }
 
 .app-notification-detail-list {

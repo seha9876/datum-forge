@@ -692,6 +692,9 @@ onMounted(() => {
       :table-count="viewTableCount"
     />
     <ConfirmDialog :controller="confirmDialog" />
-    <AppNotificationSnackbar :controller="appNotifications" />
+    <AppNotificationSnackbar
+      :controller="appNotifications"
+      :notification-settings="store.settings?.notificationSettings"
+    />
   </v-app>
 </template>

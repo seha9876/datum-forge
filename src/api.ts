@@ -52,6 +52,7 @@ import type {
   TableDetail,
   CreateViewNavFolderPayload,
   UpdateLabelColumnPayload,
+  UpdateNotificationSettingsPayload,
   UpdateColumnPayload,
   ViewLayoutTemplate,
   ViewLayoutCardColumnBinding,
@@ -73,6 +74,8 @@ export const api = {
   getAppSettings: () => invoke<AppSettings>("get_app_settings"),
   updateRecordIdVisibility: (show: boolean) =>
     invoke<AppSettings>("update_record_id_visibility", { show }),
+  updateNotificationSettings: (payload: UpdateNotificationSettingsPayload) =>
+    invoke<AppSettings>("update_notification_settings", { payload }),
   createDatabaseFile: (payload: CreateDatabasePayload) =>
     invoke<AppSettings>("create_database_file", { payload }),
   setupOpenDatabaseFile: (dbFile: string) =>
