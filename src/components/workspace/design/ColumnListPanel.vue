@@ -6,6 +6,13 @@ import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
 import type { AppColumn, TableDetail } from "../../../types";
 
+type FormRef = {
+  validate: () => Promise<{ valid: boolean }>;
+  resetValidation: () => void;
+};
+
+type ValidationRule = (value: unknown) => true | string;
+
 const props = defineProps<{
   columns: AppColumn[];
   editingColumn: {
@@ -26,6 +33,7 @@ const props = defineProps<{
 }>();
 
 const confirmDialog = useConfirmDialog();
+const editFormRef = ref<FormRef | null>(null);
 
 /** ID カラムを除いたドラッグ対象カラム一覧です。 */
 const draggableColumns = ref<AppColumn[]>([]);
@@ -64,6 +72,51 @@ const labelColumnItems = computed(() => [
  */
 function handleLabelColumnChange(labelColumnId: number | null) {
   void props.onUpdateLabelColumn(labelColumnId);
+}
+
+/**
+ * Vuetify の rules で空欄を判定するため、文字列以外の null/undefined もまとめて扱います。
+ */
+function isRequiredValueEmpty(value: unknown) {
+  return (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "")
+  );
+}
+
+/**
+ * 表示名や物理名など、編集時に空欄へできない項目の共通ルールです。
+ */
+function requiredRule(label: string): ValidationRule {
+  return (value: unknown) =>
+    isRequiredValueEmpty(value) ? `${label} は必須です` : true;
+}
+
+/**
+ * 物理名は SQLite の列名として使うため、バックエンドの識別子ルールと同じ条件で保存前に止めます。
+ */
+function physicalNameRule(value: unknown) {
+  if (typeof value !== "string") {
+    return "物理名は文字列で入力してください";
+  }
+
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(value)
+    ? true
+    : "半角英字で始め、英数字と _ のみ使用できます";
+}
+
+/**
+ * 編集行の入力を検証してから、親コンポーネントの保存処理へ進みます。
+ */
+async function handleSubmitEdit() {
+  const validation = await editFormRef.value?.validate();
+  if (!validation?.valid) {
+    return;
+  }
+
+  await props.onSubmitEdit();
+  editFormRef.value?.resetValidation();
 }
 
 /**
@@ -200,22 +253,31 @@ async function handleDragEnd() {
               </button>
             </template>
           </v-tooltip>
-          <div class="column-main">
+          <v-form
+            ref="editFormRef"
+            class="column-main"
+            validate-on="submit lazy"
+            @submit.prevent="handleSubmitEdit"
+          >
             <v-text-field
               v-model="editingColumn.displayName"
               density="compact"
-              hide-details
-              placeholder="表示名"
+              hide-details="auto"
+              label="表示名"
+              :rules="[requiredRule('表示名')]"
               variant="outlined"
             />
             <v-text-field
               v-model="editingColumn.columnName"
               density="compact"
-              hide-details
-              placeholder="column_name"
+              hide-details="auto"
+              hint="半角英字で始め、英数字と _ のみ使用できます"
+              label="物理名"
+              placeholder="name"
+              :rules="[requiredRule('物理名'), physicalNameRule]"
               variant="outlined"
             />
-          </div>
+          </v-form>
           <div>{{ fieldTypeLabel(column.fieldType) }}</div>
           <div class="column-meta">
             <span>{{ fieldTypeMeta(column) }}</span>
@@ -232,7 +294,7 @@ async function handleDragEnd() {
               color="primary"
               density="comfortable"
               size="small"
-              @click="onSubmitEdit"
+              @click="handleSubmitEdit"
               >保存</v-btn
             >
             <v-btn

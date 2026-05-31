@@ -18,10 +18,48 @@
   --danger-soft: rgb(var(--v-theme-error-container));
   --shadow-color: rgba(var(--v-theme-shadow), 0.12);
   --shadow: 0 18px 50px var(--shadow-color);
+  --app-scrollbar-track: rgba(var(--v-theme-surface-variant), 0.35);
+  --app-scrollbar-thumb: rgba(var(--v-theme-on-surface), 0.26);
+  --app-scrollbar-thumb-hover: rgba(var(--v-theme-on-surface), 0.38);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--app-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(
+      var(--app-scrollbar-thumb),
+      var(--app-scrollbar-thumb)
+    )
+    padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+      var(--app-scrollbar-thumb-hover),
+      var(--app-scrollbar-thumb-hover)
+    )
+    padding-box;
 }
 
 body {

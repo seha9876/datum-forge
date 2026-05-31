@@ -468,10 +468,7 @@ onMounted(() => {
         </v-menu>
       </nav>
 
-      <div
-        class="app-window-mode-group app-window-no-drag"
-        aria-label="ワークスペースモード"
-      >
+      <div class="app-window-mode-group" aria-label="ワークスペースモード">
         <WorkspaceModeTabs v-model="currentMode" class="app-window-mode-tabs" />
       </div>
 
