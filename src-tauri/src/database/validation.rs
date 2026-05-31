@@ -1,4 +1,6 @@
 use super::*;
+use rusqlite::{types::ValueRef, ToSql};
+use serde_json::Value;
 
 pub(super) fn validate_identifier(input: &str) -> Result<(), DbError> {
     let starts_ok = input
@@ -117,4 +119,30 @@ pub(super) fn to_sql_value(value: Option<&Value>, field_type: &str) -> Box<dyn T
         }
         _ => Box::new(value.and_then(Value::as_str).map(|item| item.to_string()) as Option<String>),
     }
+}
+
+pub(super) fn require_trimmed<'a>(field_name: &str, value: &'a str) -> Result<&'a str, DbError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(DbError::InvalidInput(format!("{field_name} is required")));
+    }
+    Ok(trimmed)
+}
+
+pub(super) fn parse_group_ids(value: Option<String>) -> Vec<i64> {
+    value
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|item| item.parse::<i64>().ok())
+        .collect()
+}
+
+pub(super) fn sqlite_value_to_json(value: ValueRef<'_>) -> Result<Value, rusqlite::Error> {
+    Ok(match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(v) => Value::from(v),
+        ValueRef::Real(v) => Value::from(v),
+        ValueRef::Text(v) => Value::from(String::from_utf8_lossy(v).to_string()),
+        ValueRef::Blob(_) => Value::Null,
+    })
 }

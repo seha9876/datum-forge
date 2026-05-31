@@ -3,10 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
+import { useFreeLayoutStyleEditing } from "./useFreeLayoutStyleEditing";
+import ViewFreeLayoutBindingPanel from "./ViewFreeLayoutBindingPanel.vue";
 import {
   boxFromPoints,
   clampViewportScale,
-  DEFAULT_CARD_STYLE,
   DRAG_THRESHOLD,
   intersects,
   MIN_CARD_HEIGHT,
@@ -16,14 +17,13 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH
 } from "./ViewFreeLayoutCanvas.helpers";
+import ViewFreeLayoutStyleInspector from "./ViewFreeLayoutStyleInspector.vue";
+import ViewFreeLayoutToolbar from "./ViewFreeLayoutToolbar.vue";
 
 import type {
   CanvasElement,
-  InputLikeEvent,
   InteractionState,
   KeyboardLikeEvent,
-  LayoutStyleKey,
-  LayoutStyleValue,
   PanDrag,
   PointerLikeEvent,
   PointerTarget,
@@ -322,21 +322,6 @@ const selectedCardHasOverride = computed(
     selectedLayouts.value.length === 1 && selectedLayouts.value[0].hasOverride
 );
 
-const styleInspectorValues = computed(() => ({
-  backgroundColor: sharedStyleValue("backgroundColor"),
-  borderRadius: sharedStyleValue("borderRadius"),
-  fontSize: sharedStyleValue("fontSize"),
-  fontWeight: sharedStyleValue("fontWeight"),
-  padding: sharedStyleValue("padding"),
-  paddingTop: sharedStyleValue("paddingTop"),
-  paddingRight: sharedStyleValue("paddingRight"),
-  paddingBottom: sharedStyleValue("paddingBottom"),
-  paddingLeft: sharedStyleValue("paddingLeft"),
-  textAlign: sharedStyleValue("textAlign"),
-  textColor: sharedStyleValue("textColor"),
-  textDirection: sharedStyleValue("textDirection"),
-  showLabel: sharedStyleValue("showLabel")
-}));
 watch(
   () => [props.layoutItems, props.templateCards, props.editorMode] as const,
   () => {
@@ -625,11 +610,11 @@ function closeBindingEditor() {
 }
 
 /**
- * 紐付け設定パネルの開閉をトグルします。
- * 未保存の変更がある場合は破棄確認ダイアログを表示します。
+ * 紐付け設定パネルの開閉を切り替えます。
+ * 未保存の変更がある場合は、破棄確認ダイアログを表示します。
  */
 async function toggleBindingEditor() {
-  // パネルが開いている場合は閉じる動作
+  // パネルが開いている場合は閉じる動作を優先します。
   if (isBindingEditorOpen.value) {
     if (hasUnsavedBindingChanges.value) {
       const confirmed = await confirmDialog.open({
@@ -644,7 +629,7 @@ async function toggleBindingEditor() {
     return;
   }
 
-  // パネルが閉じている場合は開く動作
+  // パネルが閉じている場合は開きます。
   openBindingEditor();
 }
 
@@ -676,211 +661,6 @@ function saveBindingDraft() {
   if (!hasUnboundTemplateForTable.value) {
     closeBindingEditor();
   }
-}
-
-function layoutStyleValue(
-  layout: ViewLayoutCardItem,
-  key: LayoutStyleKey
-): LayoutStyleValue {
-  if (isPaddingSideKey(key)) {
-    return layout[key] ?? layout.padding ?? DEFAULT_CARD_STYLE[key];
-  }
-
-  return layout[key] ?? DEFAULT_CARD_STYLE[key];
-}
-
-function isPaddingSideKey(
-  key: LayoutStyleKey
-): key is "paddingTop" | "paddingRight" | "paddingBottom" | "paddingLeft" {
-  return (
-    key === "paddingTop" ||
-    key === "paddingRight" ||
-    key === "paddingBottom" ||
-    key === "paddingLeft"
-  );
-}
-
-function sharedStyleValue(key: LayoutStyleKey): LayoutStyleValue | "" {
-  const [firstLayout, ...restLayouts] = selectedLayouts.value;
-  if (!firstLayout) {
-    return "";
-  }
-
-  const firstValue = layoutStyleValue(firstLayout, key);
-  const hasMixedValues = restLayouts.some(
-    (layout) => layoutStyleValue(layout, key) !== firstValue
-  );
-  return hasMixedValues ? "" : firstValue;
-}
-
-function cardStyle(layout: ViewLayoutCardItem): CSSProperties {
-  const backgroundColor = layoutStyleValue(layout, "backgroundColor");
-  const textColor = layoutStyleValue(layout, "textColor");
-  return {
-    ...(backgroundColor ? { backgroundColor: String(backgroundColor) } : {}),
-    borderRadius: `${layoutStyleValue(layout, "borderRadius")}px`,
-    ...(textColor ? { color: String(textColor) } : {}),
-    fontSize: `${layoutStyleValue(layout, "fontSize")}px`,
-    fontWeight: String(layoutStyleValue(layout, "fontWeight")),
-    height: `${layout.height}px`,
-    paddingBottom: `${layoutStyleValue(layout, "paddingBottom")}px`,
-    paddingLeft: `${layoutStyleValue(layout, "paddingLeft")}px`,
-    paddingRight: `${layoutStyleValue(layout, "paddingRight")}px`,
-    paddingTop: `${layoutStyleValue(layout, "paddingTop")}px`,
-    textAlign: layoutStyleValue(
-      layout,
-      "textAlign"
-    ) as CSSProperties["textAlign"],
-    transform: `translate(${layout.x}px, ${layout.y}px)`,
-    width: `${layout.width}px`
-  };
-}
-
-function cardContentStyle(layout: ViewLayoutCardItem): CSSProperties {
-  return {
-    writingMode:
-      layoutStyleValue(layout, "textDirection") === "vertical"
-        ? "vertical-rl"
-        : "horizontal-tb"
-  };
-}
-
-function styleInputValue(key: LayoutStyleKey) {
-  const value = styleInspectorValues.value[key];
-  return value == null || value === "" ? "" : String(value);
-}
-
-function backgroundColorInputValue() {
-  const value = styleInputValue("backgroundColor");
-  return value && value !== "transparent"
-    ? value
-    : themeColorInputValue("--v-theme-surface");
-}
-
-function themeColorInputValue(tokenName: string) {
-  const documentElement = globalThis.document?.documentElement;
-  if (!documentElement) {
-    return "";
-  }
-
-  const tokenValue = globalThis
-    .getComputedStyle(documentElement)
-    .getPropertyValue(tokenName)
-    .trim();
-  const colorChannels = tokenValue
-    .split(/[,\s]+/)
-    .map((part) => Number(part))
-    .filter((part) => Number.isFinite(part))
-    .slice(0, 3);
-
-  if (colorChannels.length !== 3) {
-    return "";
-  }
-
-  return colorChannels
-    .map((part) =>
-      Math.max(0, Math.min(255, part)).toString(16).padStart(2, "0")
-    )
-    .join("")
-    .replace(/^/, "#");
-}
-
-function isTransparentBackgroundSelected() {
-  return styleInspectorValues.value.backgroundColor === "transparent";
-}
-
-function hasTransparentBackground(layout: ViewLayoutCardItem) {
-  return layoutStyleValue(layout, "backgroundColor") === "transparent";
-}
-
-function applyBackgroundColorMode(mode: "color" | "transparent") {
-  applySelectedStyle(
-    "backgroundColor",
-    mode === "transparent" ? "transparent" : backgroundColorInputValue() || null
-  );
-}
-
-function styleNumberInputValue(key: LayoutStyleKey) {
-  const value = styleInspectorValues.value[key];
-  return typeof value === "number" ? value : "";
-}
-
-function styleBooleanInputValue(key: LayoutStyleKey) {
-  const value = styleInspectorValues.value[key];
-  if (key === "showLabel") {
-    return value === "" ? true : value !== false;
-  }
-  return value === "bold";
-}
-
-function applySelectedStyle(key: LayoutStyleKey, value: LayoutStyleValue) {
-  if (selectedLayouts.value.length === 0) {
-    return;
-  }
-
-  updateLayouts(
-    selectedLayouts.value.map((layout) => ({
-      ...layout,
-      [key]: value
-    })),
-    true
-  );
-}
-
-function inputTarget(event: unknown) {
-  return (event as InputLikeEvent).target;
-}
-
-function applyStyleFromInput(key: LayoutStyleKey, event: unknown) {
-  const value = inputTarget(event)?.value ?? "";
-  if (!value) {
-    return;
-  }
-
-  applySelectedStyle(key, value);
-}
-
-function applyNumberStyleFromInput(key: LayoutStyleKey, event: unknown) {
-  const value = Number(inputTarget(event)?.value);
-  if (!Number.isFinite(value)) {
-    return;
-  }
-
-  applySelectedStyle(key, value);
-}
-
-function applyFontWeightFromCheckbox(value: boolean | null) {
-  applySelectedStyle("fontWeight", value ? "bold" : "normal");
-}
-
-function applyShowLabelFromCheckbox(value: boolean | null) {
-  applySelectedStyle("showLabel", value ?? true);
-}
-
-function resetSelectedStyle() {
-  if (selectedLayouts.value.length === 0) {
-    return;
-  }
-
-  updateLayouts(
-    selectedLayouts.value.map((layout) => ({
-      ...layout,
-      backgroundColor: null,
-      borderRadius: null,
-      fontSize: null,
-      fontWeight: null,
-      padding: null,
-      paddingTop: null,
-      paddingRight: null,
-      paddingBottom: null,
-      paddingLeft: null,
-      textAlign: null,
-      textColor: null,
-      textDirection: null,
-      showLabel: null
-    })),
-    true
-  );
 }
 
 function shouldShowLabel(layout: ViewLayoutCardItem) {
@@ -1006,6 +786,27 @@ function updateLayouts(items: ViewLayoutCardItem[], save: boolean) {
 function updateLayout(item: ViewLayoutCardItem, save: boolean) {
   updateLayouts([item], save);
 }
+
+const {
+  applyBackgroundColorMode,
+  applyFontWeightFromCheckbox,
+  applyNumberStyleFromInput,
+  applySelectedStyle,
+  applyShowLabelFromCheckbox,
+  applyStyleFromInput,
+  backgroundColorInputValue,
+  cardContentStyle,
+  cardStyle,
+  hasTransparentBackground,
+  isTransparentBackgroundSelected,
+  layoutStyleValue,
+  resetSelectedStyle,
+  styleBooleanInputValue,
+  styleInputValue,
+  styleInspectorValues,
+  styleNumberInputValue,
+  themeColorInputValue
+} = useFreeLayoutStyleEditing(selectedLayouts, updateLayouts);
 
 function pointerTarget(event: PointerLikeEvent) {
   return event.currentTarget as PointerTarget | null;
@@ -1497,148 +1298,34 @@ function layoutToTemplateCard(
 
 <template>
   <section ref="panelRef" class="view-free-layout-panel">
-    <div class="section-header">
-      <div>
-        <template v-if="isTemplateMode">
-          <h2>テンプレート編集</h2>
-          <p class="help-text">
-            {{ templateName }} のカード枠と見た目を編集します。
-          </p>
-        </template>
-        <template v-else>
-          <h2>自由配置ビュー</h2>
-          <p class="help-text">
-            このレコードだけの表示位置や見た目を調整できます。
-          </p>
-        </template>
-      </div>
-      <div class="view-layout-toolbar">
-        <div class="view-viewport-toolbar" aria-label="キャンバス表示操作">
-          <v-tooltip text="縮小" location="bottom">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                @click="zoomFromCenter(-VIEWPORT_ZOOM_STEP)"
-              >
-                -
-              </button>
-            </template>
-          </v-tooltip>
-          <v-tooltip text="ズームをリセット" location="bottom">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                @click="resetViewport"
-              >
-                {{ viewportPercent }}%
-              </button>
-            </template>
-          </v-tooltip>
-          <v-tooltip text="拡大" location="bottom">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                @click="zoomFromCenter(VIEWPORT_ZOOM_STEP)"
-              >
-                +
-              </button>
-            </template>
-          </v-tooltip>
-          <v-tooltip text="全体表示" location="bottom">
-            <template #activator="{ props: tooltipProps }">
-              <button
-                v-bind="tooltipProps"
-                type="button"
-                @click="fitViewportToContent"
-              >
-                全体表示
-              </button>
-            </template>
-          </v-tooltip>
-        </div>
-        <span class="view-layout-save-state">
-          {{ saving ? "保存中..." : "保存済み" }}
-        </span>
-        <v-menu
-          v-if="isTemplateMode"
-          v-model="templatePreviewMenuOpen"
-          :close-on-content-click="false"
-          location="bottom end"
-        >
-          <template #activator="{ props: menuProps }">
-            <v-btn
-              v-bind="menuProps"
-              prepend-icon="mdi-eye-outline"
-              color="primary"
-              variant="tonal"
-              size="small"
-              :loading="templatePreviewLoading"
-            >
-              プレビュー
-            </v-btn>
-          </template>
-          <v-card class="view-template-preview-menu" rounded="lg">
-            <v-card-title>プレビューするデータ</v-card-title>
-            <v-card-text>
-              <v-autocomplete
-                :items="templatePreviewRecordItems"
-                :model-value="selectedTemplatePreviewRecordKey"
-                item-title="title"
-                item-value="value"
-                label="テーブル / レコード"
-                variant="outlined"
-                density="comfortable"
-                hide-details
-                :disabled="templatePreviewLoading"
-                @update:model-value="selectTemplatePreviewRecord"
-              />
-            </v-card-text>
-          </v-card>
-        </v-menu>
-        <v-chip
-          v-if="isTemplatePreviewActive"
-          class="view-template-preview-chip"
-          color="primary"
-          variant="tonal"
-          closable
-          @click:close="clearTemplatePreview"
-        >
-          プレビュー中: {{ templatePreviewLabel }}
-        </v-chip>
-        <v-btn
-          v-if="!isTemplateMode && displayColumns.length > 0"
-          prepend-icon="mdi-card-bulleted-settings-outline"
-          color="primary"
-          :variant="isBindingEditorVisible ? 'flat' : 'tonal'"
-          size="small"
-          :disabled="hasUnboundTemplateForTable"
-          @click="toggleBindingEditor"
-        >
-          テンプレート設定
-        </v-btn>
-        <v-btn
-          v-if="isTemplateMode"
-          prepend-icon="mdi-plus"
-          color="primary"
-          variant="tonal"
-          size="small"
-          @click="addTemplateCard"
-        >
-          カード追加
-        </v-btn>
-        <v-switch
-          v-model="editMode"
-          :disabled="isBindingEditorVisible"
-          hide-details
-          density="compact"
-          color="primary"
-          label="編集"
-        />
-      </div>
-    </div>
+    <ViewFreeLayoutToolbar
+      :can-edit-bindings="
+        !isTemplateMode &&
+        displayColumns.length > 0 &&
+        !hasUnboundTemplateForTable
+      "
+      :edit-mode="editMode"
+      :is-binding-editor-visible="isBindingEditorVisible"
+      :is-template-mode="isTemplateMode"
+      :is-template-preview-active="isTemplatePreviewActive"
+      :saving="saving"
+      :selected-template-preview-record-key="selectedTemplatePreviewRecordKey"
+      :template-name="templateName"
+      :template-preview-label="templatePreviewLabel"
+      :template-preview-loading="templatePreviewLoading"
+      :template-preview-menu-open="templatePreviewMenuOpen"
+      :template-preview-record-items="templatePreviewRecordItems"
+      :viewport-percent="viewportPercent"
+      @add-template-card="addTemplateCard"
+      @clear-template-preview="clearTemplatePreview"
+      @fit-viewport="fitViewportToContent"
+      @reset-viewport="resetViewport"
+      @select-template-preview-record="selectTemplatePreviewRecord"
+      @toggle-binding-editor="toggleBindingEditor"
+      @update:edit-mode="editMode = Boolean($event)"
+      @update:template-preview-menu-open="templatePreviewMenuOpen = $event"
+      @zoom-from-center="zoomFromCenter"
+    />
     <div class="view-layout-workspace">
       <div
         ref="canvasRef"
@@ -1825,426 +1512,63 @@ function layoutToTemplateCard(
           <p>テンプレート編集でカード枠を追加してください。</p>
         </div>
       </div>
-      <aside
+      <ViewFreeLayoutBindingPanel
         v-if="isBindingEditorVisible"
-        class="view-binding-panel"
-        @pointerdown.stop
-        @click.stop
-      >
-        <div class="view-record-template-settings">
-          <strong>テンプレート設定</strong>
-          <div class="view-record-template-heading">
-            <div>
-              <strong>適用中テンプレート</strong>
-            </div>
-            <v-tooltip
-              v-if="recordTemplateTooltipText"
-              :text="recordTemplateTooltipText"
-              location="bottom"
-            >
-              <template #activator="{ props: tooltipProps }">
-                <v-chip
-                  v-bind="tooltipProps"
-                  class="view-record-template-source-chip"
-                  size="small"
-                  :color="recordTemplateSourceColor"
-                  variant="tonal"
-                >
-                  {{ recordTemplateSourceChipLabel }}
-                </v-chip>
-              </template>
-            </v-tooltip>
-            <v-chip
-              v-else
-              class="view-record-template-source-chip"
-              size="small"
-              :color="recordTemplateSourceColor"
-              variant="tonal"
-            >
-              {{ recordTemplateSourceChipLabel }}
-            </v-chip>
-          </div>
-          <div class="view-record-template-control-row">
-            <v-select
-              :items="recordTemplateItems"
-              :model-value="
-                selectedItem?.type === 'tableRecord'
-                  ? (selectedItem.recordTemplateId ?? null)
-                  : null
-              "
-              item-title="title"
-              item-value="value"
-              label="個別テンプレート"
-              variant="outlined"
-              density="compact"
-              hide-details
-              :disabled="saving || recordTemplateItems.length === 0"
-              @update:model-value="assignRecordTemplate"
-            />
-            <v-btn
-              color="primary"
-              variant="tonal"
-              size="small"
-              :disabled="
-                saving ||
-                selectedItem?.type !== 'tableRecord' ||
-                !selectedItem.recordTemplateId
-              "
-              @click="clearRecordTemplate"
-            >
-              個別設定を解除
-            </v-btn>
-          </div>
-        </div>
-        <div class="view-binding-setup-copy">
-          <strong>カードごとの表示項目</strong>
-          <p>
-            カードを選ぶと、キャンバス上の対応する位置も強調されます。未使用にしたいカードは未選択のまま保存できます。
-          </p>
-        </div>
-        <div class="view-binding-list">
-          <v-card
-            v-for="(layout, index) in bindableTemplateLayouts"
-            :key="layout.cardId"
-            :class="{ selected: isBindingCardSelected(layout.cardId) }"
-            variant="outlined"
-            rounded="lg"
-            class="view-binding-card"
-            role="button"
-            tabindex="0"
-            @click="selectBindingCard(layout.cardId)"
-            @focusin="selectBindingCard(layout.cardId)"
-          >
-            <div>
-              <strong>{{ cardBindingLabel(layout, index) }}</strong>
-            </div>
-            <v-select
-              :items="bindingColumnItems"
-              :model-value="bindingDraft[layout.cardId] ?? null"
-              clearable
-              density="compact"
-              hide-details
-              item-title="title"
-              item-value="value"
-              label="表示カラム"
-              variant="outlined"
-              @click.stop
-              @focusin.stop
-              @pointerdown.stop
-              @update:model-value="setBindingDraft(layout.cardId, $event)"
-            />
-          </v-card>
-        </div>
-        <v-alert
-          v-if="hasDuplicateBindingColumns"
-          type="warning"
-          variant="tonal"
-          density="compact"
-        >
-          同じカラムを複数のカードへ紐付けることはできません。
-        </v-alert>
-        <div class="view-binding-actions">
-          <v-btn
-            v-if="!hasUnboundTemplateForTable"
-            variant="text"
-            :disabled="saving"
-            @click="closeBindingEditor"
-          >
-            閉じる
-          </v-btn>
-          <v-btn
-            color="primary"
-            variant="flat"
-            :disabled="!canSaveBindingDraft"
-            :loading="saving"
-            @click="saveBindingDraft"
-          >
-            紐付けを保存
-          </v-btn>
-        </div>
-      </aside>
-      <aside
+        :bindable-template-layouts="bindableTemplateLayouts"
+        :binding-column-items="bindingColumnItems"
+        :binding-draft="bindingDraft"
+        :can-save-binding-draft="canSaveBindingDraft"
+        :card-binding-label="cardBindingLabel"
+        :column-display-name="columnDisplayName"
+        :has-duplicate-binding-columns="hasDuplicateBindingColumns"
+        :has-unbound-template-for-table="hasUnboundTemplateForTable"
+        :is-binding-card-selected="isBindingCardSelected"
+        :record-template-items="recordTemplateItems"
+        :record-template-source-chip-label="recordTemplateSourceChipLabel"
+        :record-template-source-color="recordTemplateSourceColor"
+        :record-template-tooltip-text="recordTemplateTooltipText"
+        :saving="saving"
+        :selected-item="selectedItem"
+        @assign-record-template="assignRecordTemplate"
+        @clear-record-template="clearRecordTemplate"
+        @close-binding-editor="closeBindingEditor"
+        @save-binding-draft="saveBindingDraft"
+        @select-binding-card="selectBindingCard"
+        @set-binding-draft="setBindingDraft"
+      />
+      <ViewFreeLayoutStyleInspector
         v-else-if="editMode"
-        class="view-style-inspector"
-        @pointerdown.stop
-        @click.stop
-      >
-        <div
-          v-if="isTemplateMode && isTemplatePreviewActive"
-          class="view-template-preview-bindings"
-          :class="{ open: isTemplatePreviewBindingsOpen }"
-        >
-          <div class="view-template-preview-binding-heading">
-            <div>
-              <strong>一時紐付け</strong>
-              <span>
-                {{ templatePreviewBoundCount }} / {{ templateCards.length }}
-                紐付け済み・保存されません
-              </span>
-            </div>
-            <v-tooltip
-              :text="
-                isTemplatePreviewBindingsOpen
-                  ? '一時紐付けを畳む'
-                  : '一時紐付けを開く'
-              "
-              location="bottom"
-            >
-              <template #activator="{ props: tooltipProps }">
-                <v-btn
-                  v-bind="tooltipProps"
-                  :icon="
-                    isTemplatePreviewBindingsOpen
-                      ? 'mdi-chevron-down'
-                      : 'mdi-chevron-right'
-                  "
-                  variant="text"
-                  size="small"
-                  :aria-expanded="isTemplatePreviewBindingsOpen"
-                  :aria-label="
-                    isTemplatePreviewBindingsOpen
-                      ? '一時紐付けを畳む'
-                      : '一時紐付けを開く'
-                  "
-                  @click="toggleTemplatePreviewBindings"
-                />
-              </template>
-            </v-tooltip>
-          </div>
-          <div
-            v-if="isTemplatePreviewBindingsOpen"
-            class="view-template-preview-binding-body"
-          >
-            <p class="view-empty-hint mb-0">
-              プレビュー中だけ、カードに表示するカラムを選べます。
-            </p>
-            <div class="view-template-preview-binding-list">
-              <label
-                v-for="(layout, index) in draftLayouts"
-                :key="layout.cardId"
-                class="view-template-preview-binding"
-              >
-                <span>{{ cardBindingLabel(layout, index) }}</span>
-                <v-select
-                  :items="bindingColumnItems"
-                  :model-value="
-                    templatePreviewBindingDraft[layout.cardId] ?? null
-                  "
-                  item-title="title"
-                  item-value="value"
-                  label="表示カラム"
-                  variant="outlined"
-                  density="compact"
-                  clearable
-                  hide-details
-                  @update:model-value="
-                    setTemplatePreviewBinding(layout.cardId, $event)
-                  "
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="view-style-inspector-heading">
-          <strong>スタイル</strong>
-          <span>{{ selectedLayouts.length }}件</span>
-        </div>
-
-        <p v-if="selectedLayouts.length === 0" class="view-empty-hint">
-          カードを選択してください。
-        </p>
-        <div v-else class="view-style-controls">
-          <label class="view-style-control view-background-control">
-            <span>背景色</span>
-            <div class="view-background-row">
-              <input
-                type="color"
-                :class="{ muted: isTransparentBackgroundSelected() }"
-                :value="backgroundColorInputValue()"
-                @input="applyStyleFromInput('backgroundColor', $event)"
-              />
-              <button
-                type="button"
-                class="view-background-transparent-button"
-                :class="{ active: isTransparentBackgroundSelected() }"
-                @click="applyBackgroundColorMode('transparent')"
-              >
-                透明
-              </button>
-            </div>
-          </label>
-          <label class="view-style-control">
-            <span>文字色</span>
-            <input
-              type="color"
-              :value="
-                styleInputValue('textColor') ||
-                themeColorInputValue('--v-theme-on-surface')
-              "
-              @input="applyStyleFromInput('textColor', $event)"
-            />
-          </label>
-
-          <label class="view-style-control">
-            <span>文字サイズ</span>
-            <input
-              type="number"
-              min="10"
-              max="48"
-              step="1"
-              :value="styleNumberInputValue('fontSize')"
-              placeholder="混在"
-              @change="applyNumberStyleFromInput('fontSize', $event)"
-            />
-          </label>
-          <div class="view-style-control view-padding-control">
-            <span>余白</span>
-            <div class="view-padding-grid">
-              <label>
-                <span>上</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  step="1"
-                  :value="styleNumberInputValue('paddingTop')"
-                  placeholder="混在"
-                  @change="applyNumberStyleFromInput('paddingTop', $event)"
-                />
-              </label>
-              <label>
-                <span>右</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  step="1"
-                  :value="styleNumberInputValue('paddingRight')"
-                  placeholder="混在"
-                  @change="applyNumberStyleFromInput('paddingRight', $event)"
-                />
-              </label>
-              <label>
-                <span>下</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  step="1"
-                  :value="styleNumberInputValue('paddingBottom')"
-                  placeholder="混在"
-                  @change="applyNumberStyleFromInput('paddingBottom', $event)"
-                />
-              </label>
-              <label>
-                <span>左</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  step="1"
-                  :value="styleNumberInputValue('paddingLeft')"
-                  placeholder="混在"
-                  @change="applyNumberStyleFromInput('paddingLeft', $event)"
-                />
-              </label>
-            </div>
-          </div>
-          <label class="view-style-control">
-            <span>角丸</span>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              step="1"
-              :value="styleNumberInputValue('borderRadius')"
-              placeholder="混在"
-              @change="applyNumberStyleFromInput('borderRadius', $event)"
-            />
-          </label>
-
-          <div class="view-style-control">
-            <span>文字方向</span>
-            <v-btn-toggle
-              :model-value="styleInspectorValues.textDirection"
-              mandatory
-              divided
-              color="primary"
-              variant="tonal"
-              rounded="lg"
-              density="comfortable"
-              class="view-style-segment d-flex ga-1 pa-1"
-              @update:model-value="applySelectedStyle('textDirection', $event)"
-            >
-              <v-btn value="horizontal">横</v-btn>
-              <v-btn value="vertical">縦</v-btn>
-            </v-btn-toggle>
-          </div>
-
-          <div class="view-style-control">
-            <span>文字揃え</span>
-            <v-btn-toggle
-              :model-value="styleInspectorValues.textAlign"
-              mandatory
-              divided
-              color="primary"
-              variant="tonal"
-              rounded="lg"
-              density="comfortable"
-              class="view-style-segment d-flex ga-1 pa-1"
-              @update:model-value="applySelectedStyle('textAlign', $event)"
-            >
-              <v-btn value="left">左</v-btn>
-              <v-btn value="center">中央</v-btn>
-              <v-btn value="right">右</v-btn>
-            </v-btn-toggle>
-          </div>
-          <v-checkbox
-            class="view-style-check"
-            color="primary"
-            density="compact"
-            hide-details
-            :model-value="styleBooleanInputValue('fontWeight')"
-            label="太字"
-            @update:model-value="applyFontWeightFromCheckbox"
-          />
-
-          <v-checkbox
-            class="view-style-check"
-            color="primary"
-            density="compact"
-            hide-details
-            :model-value="styleBooleanInputValue('showLabel')"
-            label="カラム名を表示"
-            @update:model-value="applyShowLabelFromCheckbox"
-          />
-          <div v-if="!isTemplateMode" class="view-style-action-group">
-            <button
-              type="button"
-              class="view-style-reset-button"
-              :disabled="!selectedCardHasOverride"
-              @click="resetSelectedCardOverride"
-            >
-              このカードだけ解除
-            </button>
-            <button
-              type="button"
-              class="view-style-reset-button"
-              :disabled="!hasRecordOverrides"
-              @click="resetRecordOverrides"
-            >
-              個別差分を全解除
-            </button>
-          </div>
-          <button
-            type="button"
-            class="view-style-reset-button"
-            @click="resetSelectedStyle"
-          >
-            スタイルをリセット
-          </button>
-        </div>
-      </aside>
+        :apply-background-color-mode="applyBackgroundColorMode"
+        :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
+        :apply-number-style-from-input="applyNumberStyleFromInput"
+        :apply-selected-style="applySelectedStyle"
+        :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
+        :apply-style-from-input="applyStyleFromInput"
+        :background-color-input-value="backgroundColorInputValue"
+        :binding-column-items="bindingColumnItems"
+        :card-binding-label="cardBindingLabel"
+        :draft-layouts="draftLayouts"
+        :has-record-overrides="hasRecordOverrides"
+        :is-template-mode="isTemplateMode"
+        :is-template-preview-active="isTemplatePreviewActive"
+        :is-template-preview-bindings-open="isTemplatePreviewBindingsOpen"
+        :is-transparent-background-selected="isTransparentBackgroundSelected"
+        :reset-record-overrides="resetRecordOverrides"
+        :reset-selected-card-override="resetSelectedCardOverride"
+        :reset-selected-style="resetSelectedStyle"
+        :selected-card-has-override="selectedCardHasOverride"
+        :selected-layouts="selectedLayouts"
+        :set-template-preview-binding="setTemplatePreviewBinding"
+        :style-boolean-input-value="styleBooleanInputValue"
+        :style-input-value="styleInputValue"
+        :style-inspector-values="styleInspectorValues"
+        :style-number-input-value="styleNumberInputValue"
+        :template-cards="templateCards"
+        :template-preview-binding-draft="templatePreviewBindingDraft"
+        :template-preview-bound-count="templatePreviewBoundCount"
+        :theme-color-input-value="themeColorInputValue"
+        :toggle-template-preview-bindings="toggleTemplatePreviewBindings"
+      />
     </div>
   </section>
 </template>

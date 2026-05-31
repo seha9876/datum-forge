@@ -1,6 +1,8 @@
 use super::*;
+use rusqlite::Connection;
 use std::{
-    env,
+    collections::HashMap,
+    env, fs,
     path::{Path, PathBuf},
 };
 
