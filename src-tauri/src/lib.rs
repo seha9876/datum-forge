@@ -17,8 +17,9 @@ use database::{
     DeleteViewNavFolderPayload, DetachRecordTagPayload, DuplicateViewLayoutTemplatePayload,
     ExportTableCsvPayload, FolderViewLayoutTemplates, GetResolvedViewFieldLayoutPayload,
     GetViewLayoutTemplateCardsPayload, ImportExcelTablePayload, ImportTableCsvPayload,
-    ImportTableCsvResult, InspectExcelTablesPayload, InspectExcelTablesResult,
-    ListViewLayoutCardColumnBindingsPayload, ListViewLayoutTemplatesForFolderPayload,
+    ImportTableCsvResult, InspectCsvImportPayload, InspectCsvImportResult,
+    InspectExcelTablesPayload, InspectExcelTablesResult, ListViewLayoutCardColumnBindingsPayload,
+    ListViewLayoutTemplatesForFolderPayload, PreviewCsvImportPayload, PreviewCsvImportResult,
     PreviewExcelTableImportPayload, PreviewExcelTableImportResult, RecordTag, RecordTagBundle,
     RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice, RemoveViewNavFolderRecordPayload,
     RenameViewLayoutTemplatePayload, ReorderColumnsPayload, ReorderViewNavFolderRecordsPayload,
@@ -250,6 +251,36 @@ fn import_table_csv(
         .as_mut()
         .ok_or_else(db_not_ready_error)?
         .import_table_csv(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn inspect_csv_import(
+    state: State<'_, AppState>,
+    payload: InspectCsvImportPayload,
+) -> Result<InspectCsvImportResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .inspect_csv_import(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn preview_csv_import(
+    state: State<'_, AppState>,
+    payload: PreviewCsvImportPayload,
+) -> Result<PreviewCsvImportResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .preview_csv_import(payload)
         .map_err(|e| e.to_string())
 }
 
@@ -973,6 +1004,8 @@ pub fn run() {
             delete_table,
             export_table_csv,
             import_table_csv,
+            inspect_csv_import,
+            preview_csv_import,
             inspect_excel_tables,
             preview_excel_table_import,
             import_excel_table,

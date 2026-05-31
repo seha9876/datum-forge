@@ -14,7 +14,9 @@ import type {
   ExcelColumnMappingPayload,
   ImportTableCsvMode,
   ImportTableCsvResult,
+  InspectCsvImportResult,
   InspectExcelTablesResult,
+  PreviewCsvImportResult,
   PreviewExcelTableImportResult
 } from "../types";
 
@@ -67,8 +69,13 @@ const props = defineProps<{
   onImportTableCsv: (
     tableId: number,
     inputPath: string,
-    mode: ImportTableCsvMode
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
+  onInspectCsvImport: (
+    tableId: number,
+    inputPath: string
+  ) => Promise<InspectCsvImportResult>;
   onInspectExcelTables: (
     tableId: number,
     inputPath: string
@@ -82,6 +89,12 @@ const props = defineProps<{
     mode: ImportTableCsvMode,
     columnMapping: ExcelColumnMappingPayload[]
   ) => Promise<PreviewExcelTableImportResult>;
+  onPreviewCsvImport: (
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) => Promise<PreviewCsvImportResult>;
 }>();
 
 const confirmDialog = useConfirmDialog();
@@ -89,9 +102,11 @@ const appNotifications = useAppNotifications();
 /** 通常クリック時に使う、現在選択中の共通インポート方式です。 */
 const selectedImportMode = ref<ImportTableCsvMode>(loadTableImportMode());
 const isExcelImportDialogOpen = ref(false);
+const importSourceKind = ref<"csv" | "excel">("excel");
 const excelImportTable = ref<AppTableSummary | null>(null);
 const excelImportInputPath = ref("");
 const excelImportInspectResult = ref<InspectExcelTablesResult | null>(null);
+const csvImportInspectResult = ref<InspectCsvImportResult | null>(null);
 
 /** localStorageから読んだ文字列が、実際にサポートしている方式か確認します。 */
 function isImportMode(value: string | null): value is ImportTableCsvMode {
@@ -205,53 +220,39 @@ async function handleExportTableCsv(table: AppTableSummary) {
   await props.onExportTableCsv(table.id, ensureCsvExtension(outputPath));
 }
 
-async function runCsvImport(
-  table: AppTableSummary,
-  inputPath: string,
-  mode = selectedImportMode.value
-) {
-  saveTableImportMode(mode);
-
+async function prepareCsvImport(table: AppTableSummary, inputPath: string) {
   try {
-    const result = await props.onImportTableCsv(table.id, inputPath, mode);
-    if (!result) {
-      throw new Error(
-        "インポート結果を取得できませんでした。アプリを再起動してから再実行してください。"
-      );
-    }
-    appNotifications.notify({
-      kind: result.status,
-      title: importResultTitle(result.status),
-      message: importResultMessage(result.status),
-      metrics: {
-        insertedCount: result.insertedCount,
-        updatedCount: result.updatedCount,
-        skippedCount: result.skippedCount,
-        errorCount: result.errorCount
-      },
-      details: formatImportNotificationDetails(result.details)
-    });
+    importSourceKind.value = "csv";
+    excelImportTable.value = table;
+    excelImportInputPath.value = inputPath;
+    excelImportInspectResult.value = null;
+    csvImportInspectResult.value = await props.onInspectCsvImport(
+      table.id,
+      inputPath
+    );
+    isExcelImportDialogOpen.value = true;
   } catch (error) {
-    const message = errorMessage(error);
     appNotifications.notify({
       kind: "error",
       title: "インポートエラー",
-      message: "CSVの取り込みに失敗しました。",
+      message: "CSVファイルの確認に失敗しました。",
       metrics: {
         insertedCount: 0,
         updatedCount: 0,
         skippedCount: 0,
         errorCount: 1
       },
-      details: formatImportNotificationDetails([message])
+      details: formatImportNotificationDetails([errorMessage(error)])
     });
   }
 }
 
 async function prepareExcelImport(table: AppTableSummary, inputPath: string) {
   try {
+    importSourceKind.value = "excel";
     excelImportTable.value = table;
     excelImportInputPath.value = inputPath;
+    csvImportInspectResult.value = null;
     excelImportInspectResult.value = await props.onInspectExcelTables(
       table.id,
       inputPath
@@ -303,7 +304,7 @@ async function handleImportTable(
 
   const extension = selectedPathExtension(inputPath);
   if (extension === "csv") {
-    await runCsvImport(table, inputPath, mode);
+    await prepareCsvImport(table, inputPath);
     return;
   }
   if (extension === "xlsx" || extension === "xlsm") {
@@ -327,11 +328,14 @@ async function handleImportTable(
   });
 }
 
-function notifyExcelImportResult(result: ImportTableCsvResult) {
+function notifyTableImportResult(result: ImportTableCsvResult) {
+  const isExcel = importSourceKind.value === "excel";
   appNotifications.notify({
     kind: result.status,
     title: importResultTitle(result.status),
-    message: excelImportResultMessage(result.status),
+    message: isExcel
+      ? excelImportResultMessage(result.status)
+      : importResultMessage(result.status),
     metrics: {
       insertedCount: result.insertedCount,
       updatedCount: result.updatedCount,
@@ -342,11 +346,14 @@ function notifyExcelImportResult(result: ImportTableCsvResult) {
   });
 }
 
-function notifyExcelImportError(error: unknown) {
+function notifyTableImportError(error: unknown) {
+  const isExcel = importSourceKind.value === "excel";
   appNotifications.notify({
     kind: "error",
-    title: "Excelインポートエラー",
-    message: "Excelの取り込みに失敗しました。",
+    title: isExcel ? "Excelインポートエラー" : "インポートエラー",
+    message: isExcel
+      ? "Excelの取り込みに失敗しました。"
+      : "CSVの取り込みに失敗しました。",
     metrics: {
       insertedCount: 0,
       updatedCount: 0,
@@ -571,13 +578,17 @@ async function handleDeleteTable(table: AppTableSummary) {
 
   <ExcelImportDialog
     v-model="isExcelImportDialogOpen"
+    :source-kind="importSourceKind"
     :table="excelImportTable"
     :input-path="excelImportInputPath"
+    :csv-inspect-result="csvImportInspectResult"
     :inspect-result="excelImportInspectResult"
     :mode="selectedImportMode"
+    :on-preview-csv="onPreviewCsvImport"
     :on-preview="onPreviewExcelTableImport"
+    :on-import-csv="onImportTableCsv"
     :on-import="onImportExcelTable"
-    @imported="notifyExcelImportResult"
-    @error="notifyExcelImportError"
+    @imported="notifyTableImportResult"
+    @error="notifyTableImportError"
   />
 </template>

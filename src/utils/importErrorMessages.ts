@@ -104,10 +104,11 @@ function rowMessage(
           "参照先のID、またはエクスポート形式の「ID:表示名」を入力してください。"
       };
     case "has no Excel column mapping":
+    case "has no CSV column mapping":
       return {
         ...base,
         key: `mapping:${column}`,
-        message: `「${column}」に対応するExcel列がありません。`,
+        message: `「${column}」に対応する取り込み元の列がありません。`,
         action: "列の対応付けを確認してください。"
       };
     default:
@@ -132,6 +133,7 @@ function parseRowMessage(message: string, rawMessage: string) {
   const knownReasons = [
     "must be true, false, 1, or 0",
     "has no Excel column mapping",
+    "has no CSV column mapping",
     "does not match an option",
     "must be a reference id",
     "must be a valid date",
@@ -197,6 +199,31 @@ function parseNonRowMessage(
     };
   }
 
+  const duplicateExcelColumn = message.match(
+    /^Excel column `(.+)` is mapped more than once$/i
+  );
+  if (duplicateExcelColumn) {
+    return {
+      key: `excel-duplicate:${duplicateExcelColumn[1]}`,
+      message: `Excel列「${duplicateExcelColumn[1]}」に複数の列が対応しています。`,
+      action:
+        "同じ取り込み元列を複数の取り込み先に割り当てないよう、列の対応付けを確認してください。",
+      row: null,
+      rawMessage
+    };
+  }
+
+  const missingCsvColumn = message.match(/^CSV column `(.+)` was not found$/i);
+  if (missingCsvColumn) {
+    return {
+      key: `csv-missing:${missingCsvColumn[1]}`,
+      message: `CSV列「${missingCsvColumn[1]}」が見つかりません。`,
+      action: "CSVヘッダー、または列の対応付けを確認してください。",
+      row: null,
+      rawMessage
+    };
+  }
+
   if (/^CSV header must include id$/i.test(message)) {
     return {
       key: "csv-id-missing",
@@ -220,12 +247,36 @@ function parseNonRowMessage(
     };
   }
 
+  const missingExcelColumnEnglish = message.match(
+    /^Excel column `(.+)` was not found$/i
+  );
+  if (missingExcelColumnEnglish) {
+    return {
+      key: `excel-missing:${missingExcelColumnEnglish[1]}`,
+      message: `Excel列「${missingExcelColumnEnglish[1]}」が見つかりません。`,
+      action: "Excelテーブルの列名、または列の対応付けを確認してください。",
+      row: null,
+      rawMessage
+    };
+  }
+
   if (message.includes("id列の対応付けが必要")) {
     return {
       key: "excel-id-mapping",
       message: "ID列の対応付けが必要です。",
       action:
         "列の対応付けで、Datum Forgeの id に対応するExcel列を選択してください。",
+      row: null,
+      rawMessage
+    };
+  }
+
+  if (/^id column mapping is required$/i.test(message)) {
+    return {
+      key: "id-mapping",
+      message: "ID列の対応付けが必要です。",
+      action:
+        "列の対応付けで、Datum Forgeの id に対応する列を選択してください。",
       row: null,
       rawMessage
     };

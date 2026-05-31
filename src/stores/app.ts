@@ -14,7 +14,9 @@ import type {
   ExportTableCsvPayload,
   ImportExcelTablePayload,
   ImportTableCsvPayload,
+  InspectCsvImportPayload,
   InspectExcelTablesPayload,
+  PreviewCsvImportPayload,
   PreviewExcelTableImportPayload,
   ReorderColumnsPayload,
   ReferenceChoice,
@@ -138,6 +140,24 @@ export const useAppStore = defineStore("app", {
         await this.initialize();
         await this.loadTable(payload.tableId);
         return result;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async inspectCsvImport(payload: InspectCsvImportPayload) {
+      this.error = "";
+      try {
+        return await api.inspectCsvImport(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async previewCsvImport(payload: PreviewCsvImportPayload) {
+      this.error = "";
+      try {
+        return await api.previewCsvImport(payload);
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error;

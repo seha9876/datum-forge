@@ -350,6 +350,8 @@ pub struct ImportTableCsvPayload {
     pub input_path: String,
     /// ID重複時の扱いを決めるインポート方式です。
     pub mode: ImportTableCsvMode,
+    /// Datum Forge列とCSVヘッダーの対応付けです。
+    pub column_mapping: Vec<ExcelColumnMappingPayload>,
 }
 
 #[derive(Debug, Serialize)]
@@ -376,11 +378,35 @@ pub struct InspectExcelTablesPayload {
     pub input_path: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectCsvImportPayload {
+    pub table_id: i64,
+    pub input_path: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExcelColumnMappingPayload {
     pub target_column_name: String,
     pub source_column_name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectCsvImportResult {
+    pub headers: Vec<String>,
+    pub row_count: usize,
+    pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCsvImportPayload {
+    pub table_id: i64,
+    pub input_path: String,
+    pub mode: ImportTableCsvMode,
+    pub column_mapping: Vec<ExcelColumnMappingPayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -436,6 +462,21 @@ pub struct ExcelColumnMappingSuggestion {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewExcelTableImportResult {
     pub excel_table: ExcelTableInfo,
+    pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
+    pub preview_rows: Vec<HashMap<String, String>>,
+    pub total_rows: usize,
+    pub inserted_count: usize,
+    pub updated_count: usize,
+    pub unchanged_count: usize,
+    pub skipped_count: usize,
+    pub error_count: usize,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCsvImportResult {
     pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
     pub preview_rows: Vec<HashMap<String, String>>,
     pub total_rows: usize,
@@ -1996,32 +2037,40 @@ impl Db {
             return Err(DbError::InvalidInput("inputPath is required".into()));
         }
 
+        let (headers, rows) = read_csv_import_source(input_path)?;
         let table = self.get_table_summary(payload.table_id)?;
         let columns = self.list_columns(payload.table_id)?;
-        let mut reader = csv::ReaderBuilder::new().from_path(input_path)?;
-        // CSVヘッダーをDBカラムへ対応付けます。ここで列数・物理名/論理名の一致を検証します。
-        let header_columns = resolve_csv_headers(reader.headers()?, &columns)?;
-        // 単一選択はCSV上のラベルから保存用のoption_noへ戻す必要があるため、先に辞書化します。
         let select_option_maps = self.csv_select_option_maps(&columns)?;
+        let resolved_mapping =
+            resolve_excel_column_mapping(&columns, &headers, &payload.column_mapping);
+        let preview = build_csv_import_preview(
+            &self.conn,
+            &table.table_name,
+            &columns,
+            &headers,
+            &rows,
+            &resolved_mapping,
+            &select_option_maps,
+            payload.mode,
+        )?;
+
+        if !preview.errors.is_empty() {
+            return Err(DbError::InvalidInput(preview.errors.join("\n")));
+        }
 
         // インポートは途中失敗時に中途半端な行を残さないよう、全行を1トランザクションで処理します。
         let tx = self.conn.transaction()?;
         let mut inserted_count = 0;
         let mut updated_count = 0;
         let mut skipped_count = 0;
-        let mut details = Vec::new();
 
-        for (row_index, record) in reader.records().enumerate() {
-            let record = record?;
-            // csv crateのrow_indexはデータ行の0始まりです。人が見て分かるようヘッダー分を足します。
-            let row_number = row_index + 2;
+        for source_row in &rows {
             let values =
-                csv_record_to_values(&record, &header_columns, &select_option_maps, row_number)?;
-
+                csv_row_to_values(source_row, &columns, &resolved_mapping, &select_option_maps)?;
             match payload.mode {
                 ImportTableCsvMode::SkipExistingPrimaryKeys => {
                     // 既存IDは触らず、CSVにしかないIDの行だけ追加します。
-                    let id = csv_row_id(&values, row_number)?;
+                    let id = csv_row_id(&values, source_row.row_number)?;
                     if csv_record_exists(&tx, &table.table_name, id)? {
                         skipped_count += 1;
                         continue;
@@ -2036,7 +2085,7 @@ impl Db {
                 }
                 ImportTableCsvMode::UpsertByPrimaryKey => {
                     // 同じIDがあれば更新、なければCSVのIDを維持して追加します。
-                    let id = csv_row_id(&values, row_number)?;
+                    let id = csv_row_id(&values, source_row.row_number)?;
                     if csv_record_exists(&tx, &table.table_name, id)? {
                         csv_update_record(&tx, &table.table_name, &columns, &values, id)?;
                         updated_count += 1;
@@ -2048,7 +2097,8 @@ impl Db {
             }
         }
         tx.commit()?;
-        if skipped_count > 0 {
+        let mut details = preview.warnings;
+        if skipped_count > 0 && details.is_empty() {
             details.push(format!(
                 "{skipped_count}件は既存IDと重複したためスキップしました。"
             ));
@@ -2066,6 +2116,54 @@ impl Db {
             error_count: 0,
             details,
         })
+    }
+
+    pub fn inspect_csv_import(
+        &self,
+        payload: InspectCsvImportPayload,
+    ) -> Result<InspectCsvImportResult, DbError> {
+        let input_path = payload.input_path.trim();
+        if input_path.is_empty() {
+            return Err(DbError::InvalidInput("inputPath is required".into()));
+        }
+
+        let columns = self.list_columns(payload.table_id)?;
+        let (headers, rows) = read_csv_import_source(input_path)?;
+        let mapping = resolve_excel_column_mapping(&columns, &headers, &[]);
+
+        Ok(InspectCsvImportResult {
+            headers,
+            row_count: rows.len(),
+            column_mappings: import_column_mapping_suggestions(&mapping),
+        })
+    }
+
+    pub fn preview_csv_import(
+        &self,
+        payload: PreviewCsvImportPayload,
+    ) -> Result<PreviewCsvImportResult, DbError> {
+        let input_path = payload.input_path.trim();
+        if input_path.is_empty() {
+            return Err(DbError::InvalidInput("inputPath is required".into()));
+        }
+
+        let table = self.get_table_summary(payload.table_id)?;
+        let columns = self.list_columns(payload.table_id)?;
+        let select_option_maps = self.csv_select_option_maps(&columns)?;
+        let (headers, rows) = read_csv_import_source(input_path)?;
+        let resolved_mapping =
+            resolve_excel_column_mapping(&columns, &headers, &payload.column_mapping);
+
+        build_csv_import_preview(
+            &self.conn,
+            &table.table_name,
+            &columns,
+            &headers,
+            &rows,
+            &resolved_mapping,
+            &select_option_maps,
+            payload.mode,
+        )
     }
 
     pub fn inspect_excel_tables(
@@ -4999,6 +5097,12 @@ struct ExcelSourceRow {
 }
 
 #[derive(Debug, Clone)]
+struct CsvSourceRow {
+    row_number: usize,
+    values: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
 struct ResolvedExcelColumnMapping {
     column: AppColumn,
     source_column_name: Option<String>,
@@ -5494,6 +5598,102 @@ fn resolve_excel_column_mapping(
         .collect()
 }
 
+fn import_column_mapping_suggestions(
+    mapping: &[ResolvedExcelColumnMapping],
+) -> Vec<ExcelColumnMappingSuggestion> {
+    mapping
+        .iter()
+        .map(|mapping| ExcelColumnMappingSuggestion {
+            target_column_name: mapping.column.column_name.clone(),
+            target_display_name: mapping.column.display_name.clone(),
+            source_column_name: mapping.source_column_name.clone(),
+            matched_by: mapping.matched_by.clone(),
+            is_required: mapping.column.is_required || mapping.column.column_name == "id",
+        })
+        .collect()
+}
+
+fn build_csv_import_preview(
+    conn: &Connection,
+    table_name: &str,
+    columns: &[AppColumn],
+    headers: &[String],
+    rows: &[CsvSourceRow],
+    mapping: &[ResolvedExcelColumnMapping],
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+    mode: ImportTableCsvMode,
+) -> Result<PreviewCsvImportResult, DbError> {
+    let mut errors = validate_import_mapping("CSV", headers, mapping);
+    let mut warnings = import_mapping_warnings("CSV", headers, mapping);
+    let mut preview_rows = Vec::new();
+    let mut inserted_count = 0;
+    let mut updated_count = 0;
+    let mut unchanged_count = 0;
+    let mut skipped_count = 0;
+
+    if errors.is_empty() {
+        for row in rows {
+            match csv_row_to_values(row, columns, mapping, select_option_maps) {
+                Ok(values) => {
+                    if preview_rows.len() < 10 {
+                        preview_rows.push(csv_preview_row(row, mapping));
+                    }
+                    match mode {
+                        ImportTableCsvMode::SkipExistingPrimaryKeys => {
+                            let id = csv_row_id(&values, row.row_number)?;
+                            if record_exists(conn, table_name, id)? {
+                                skipped_count += 1;
+                            } else {
+                                inserted_count += 1;
+                            }
+                        }
+                        ImportTableCsvMode::AppendIgnoringPrimaryKeys => {
+                            inserted_count += 1;
+                        }
+                        ImportTableCsvMode::UpsertByPrimaryKey => {
+                            let id = csv_row_id(&values, row.row_number)?;
+                            if record_exists(conn, table_name, id)? {
+                                if record_values_match(conn, table_name, columns, id, &values)? {
+                                    unchanged_count += 1;
+                                } else {
+                                    updated_count += 1;
+                                }
+                            } else {
+                                inserted_count += 1;
+                            }
+                        }
+                    }
+                }
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+    }
+
+    if skipped_count > 0 {
+        warnings.push(format!(
+            "{skipped_count}件は既存IDと重複するため、選択中の方式ではスキップされます。"
+        ));
+    }
+    if unchanged_count > 0 {
+        warnings.push(format!(
+            "{unchanged_count}件は既存データと同じ内容のため、更新されません。"
+        ));
+    }
+
+    Ok(PreviewCsvImportResult {
+        column_mappings: import_column_mapping_suggestions(mapping),
+        preview_rows,
+        total_rows: rows.len(),
+        inserted_count,
+        updated_count,
+        unchanged_count,
+        skipped_count,
+        error_count: errors.len(),
+        warnings,
+        errors,
+    })
+}
+
 fn build_excel_import_preview(
     conn: &Connection,
     table_name: &str,
@@ -5504,8 +5704,8 @@ fn build_excel_import_preview(
     select_option_maps: &HashMap<String, HashMap<String, i64>>,
     mode: ImportTableCsvMode,
 ) -> Result<PreviewExcelTableImportResult, DbError> {
-    let mut errors = validate_excel_mapping(excel_table, mapping);
-    let mut warnings = excel_mapping_warnings(excel_table, mapping);
+    let mut errors = validate_import_mapping("Excel", &excel_table.info.column_names, mapping);
+    let mut warnings = import_mapping_warnings("Excel", &excel_table.info.column_names, mapping);
     let mut preview_rows = Vec::new();
     let mut inserted_count = 0;
     let mut updated_count = 0;
@@ -5563,16 +5763,7 @@ fn build_excel_import_preview(
 
     Ok(PreviewExcelTableImportResult {
         excel_table: excel_table.info.clone(),
-        column_mappings: mapping
-            .iter()
-            .map(|mapping| ExcelColumnMappingSuggestion {
-                target_column_name: mapping.column.column_name.clone(),
-                target_display_name: mapping.column.display_name.clone(),
-                source_column_name: mapping.source_column_name.clone(),
-                matched_by: mapping.matched_by.clone(),
-                is_required: mapping.column.is_required || mapping.column.column_name == "id",
-            })
-            .collect(),
+        column_mappings: import_column_mapping_suggestions(mapping),
         preview_rows,
         total_rows: rows.len(),
         inserted_count,
@@ -5585,8 +5776,9 @@ fn build_excel_import_preview(
     })
 }
 
-fn validate_excel_mapping(
-    excel_table: &ExcelTable,
+fn validate_import_mapping(
+    source_label: &str,
+    source_names: &[String],
     mapping: &[ResolvedExcelColumnMapping],
 ) -> Vec<String> {
     let mut errors = Vec::new();
@@ -5594,23 +5786,18 @@ fn validate_excel_mapping(
     for item in mapping {
         let Some(source) = item.source_column_name.as_ref() else {
             errors.push(format!(
-                "{} に対応するExcel列がありません。",
-                item.column.display_name
+                "row 1: {} has no {} column mapping",
+                item.column.display_name, source_label
             ));
             continue;
         };
-        if !excel_table
-            .info
-            .column_names
-            .iter()
-            .any(|name| name == source)
-        {
-            errors.push(format!("Excel列 `{source}` が見つかりません。"));
+        if !source_names.iter().any(|name| name == source) {
+            errors.push(format!("{source_label} column `{source}` was not found"));
             continue;
         }
         if !used_sources.insert(source.clone()) {
             errors.push(format!(
-                "Excel列 `{source}` が複数の列へ割り当てられています。"
+                "{source_label} column `{source}` is mapped more than once"
             ));
         }
     }
@@ -5618,22 +5805,21 @@ fn validate_excel_mapping(
         .iter()
         .any(|item| item.column.column_name == "id" && item.source_column_name.is_some())
     {
-        errors.push("id列の対応付けが必要です。".into());
+        errors.push("id column mapping is required".into());
     }
     errors
 }
 
-fn excel_mapping_warnings(
-    excel_table: &ExcelTable,
+fn import_mapping_warnings(
+    source_label: &str,
+    source_names: &[String],
     mapping: &[ResolvedExcelColumnMapping],
 ) -> Vec<String> {
     let used_sources = mapping
         .iter()
         .filter_map(|item| item.source_column_name.as_ref())
         .collect::<HashSet<_>>();
-    let unused = excel_table
-        .info
-        .column_names
+    let unused = source_names
         .iter()
         .filter(|name| !used_sources.contains(name))
         .cloned()
@@ -5642,10 +5828,90 @@ fn excel_mapping_warnings(
         Vec::new()
     } else {
         vec![format!(
-            "Excel側の未使用列があります: {}",
+            "{source_label}側の未使用列があります: {}",
             unused.join(", ")
         )]
     }
+}
+
+fn read_csv_import_source(input_path: &str) -> Result<(Vec<String>, Vec<CsvSourceRow>), DbError> {
+    let mut reader = csv::ReaderBuilder::new().from_path(input_path)?;
+    let headers = reader
+        .headers()?
+        .iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for (row_index, record) in reader.records().enumerate() {
+        let record = record?;
+        let values = headers
+            .iter()
+            .enumerate()
+            .map(|(index, header)| {
+                (
+                    header.clone(),
+                    record.get(index).unwrap_or_default().to_string(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        rows.push(CsvSourceRow {
+            row_number: row_index + 2,
+            values,
+        });
+    }
+    Ok((headers, rows))
+}
+
+fn csv_row_to_values(
+    row: &CsvSourceRow,
+    columns: &[AppColumn],
+    mapping: &[ResolvedExcelColumnMapping],
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+) -> Result<HashMap<String, Value>, DbError> {
+    let mut values = HashMap::new();
+    for column in columns {
+        let source = mapping
+            .iter()
+            .find(|item| item.column.column_name == column.column_name)
+            .and_then(|item| item.source_column_name.as_ref())
+            .ok_or_else(|| {
+                DbError::InvalidInput(format!(
+                    "row {}: {} has no CSV column mapping",
+                    row.row_number, column.display_name
+                ))
+            })?;
+        let raw = row
+            .values
+            .get(source)
+            .map(String::as_str)
+            .unwrap_or_default();
+        let value = csv_cell_to_value(column, raw, select_option_maps, row.row_number)?;
+        if column.column_name != "id" && column.is_required && is_required_value_empty(Some(&value))
+        {
+            return Err(DbError::InvalidInput(format!(
+                "row {}: {} is required",
+                row.row_number, column.display_name
+            )));
+        }
+        values.insert(column.column_name.clone(), value);
+    }
+    Ok(values)
+}
+
+fn csv_preview_row(
+    row: &CsvSourceRow,
+    mapping: &[ResolvedExcelColumnMapping],
+) -> HashMap<String, String> {
+    mapping
+        .iter()
+        .filter_map(|item| {
+            let source = item.source_column_name.as_ref()?;
+            Some((
+                item.column.column_name.clone(),
+                row.values.get(source).cloned().unwrap_or_default(),
+            ))
+        })
+        .collect()
 }
 
 fn excel_row_to_values(
@@ -5750,71 +6016,6 @@ fn record_values_match(
     Ok(target_columns
         .iter()
         .all(|column| current.get(&column.column_name) == values.get(&column.column_name)))
-}
-
-fn resolve_csv_headers(
-    headers: &csv::StringRecord,
-    columns: &[AppColumn],
-) -> Result<Vec<AppColumn>, DbError> {
-    if headers.len() != columns.len() {
-        return Err(DbError::InvalidInput(format!(
-            "CSV header count must match table columns: expected {}, got {}",
-            columns.len(),
-            headers.len()
-        )));
-    }
-
-    let mut resolved = Vec::with_capacity(headers.len());
-    let mut used_column_ids = HashSet::new();
-    for header in headers.iter() {
-        let matches = columns
-            .iter()
-            .filter(|column| column.column_name == header || column.display_name == header)
-            .collect::<Vec<_>>();
-        if matches.len() != 1 {
-            return Err(DbError::InvalidInput(format!(
-                "CSV header `{}` does not uniquely match a table column",
-                header
-            )));
-        }
-
-        let column = matches[0];
-        if !used_column_ids.insert(column.id) {
-            return Err(DbError::InvalidInput(format!(
-                "CSV column `{}` is mapped more than once",
-                column.display_name
-            )));
-        }
-        resolved.push(column.clone());
-    }
-
-    if !resolved.iter().any(|column| column.column_name == "id") {
-        return Err(DbError::InvalidInput("CSV header must include id".into()));
-    }
-    Ok(resolved)
-}
-
-fn csv_record_to_values(
-    record: &csv::StringRecord,
-    header_columns: &[AppColumn],
-    select_option_maps: &HashMap<String, HashMap<String, i64>>,
-    row_number: usize,
-) -> Result<HashMap<String, Value>, DbError> {
-    let mut values = HashMap::new();
-    for (index, column) in header_columns.iter().enumerate() {
-        let raw = record.get(index).unwrap_or_default();
-        // CSVはすべて文字列なので、DB保存前にカラム型に合わせたJSON値へ変換します。
-        let value = csv_cell_to_value(column, raw, select_option_maps, row_number)?;
-        if column.column_name != "id" && column.is_required && is_required_value_empty(Some(&value))
-        {
-            return Err(DbError::InvalidInput(format!(
-                "row {}: {} is required",
-                row_number, column.display_name
-            )));
-        }
-        values.insert(column.column_name.clone(), value);
-    }
-    Ok(values)
 }
 
 fn csv_cell_to_value(

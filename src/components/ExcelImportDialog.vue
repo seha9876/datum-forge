@@ -8,16 +8,29 @@ import type {
   ExcelColumnMappingPayload,
   ImportTableCsvMode,
   ImportTableCsvResult,
+  InspectCsvImportResult,
   InspectExcelTablesResult,
+  PreviewCsvImportResult,
   PreviewExcelTableImportResult
 } from "../types";
 
+type ImportSourceKind = "csv" | "excel";
+type ImportPreview = PreviewCsvImportResult | PreviewExcelTableImportResult;
+
 const props = defineProps<{
   modelValue: boolean;
+  sourceKind: ImportSourceKind;
   table: AppTableSummary | null;
   inputPath: string;
+  csvInspectResult: InspectCsvImportResult | null;
   inspectResult: InspectExcelTablesResult | null;
   mode: ImportTableCsvMode;
+  onPreviewCsv: (
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) => Promise<PreviewCsvImportResult>;
   onPreview: (
     tableId: number,
     inputPath: string,
@@ -32,6 +45,12 @@ const props = defineProps<{
     mode: ImportTableCsvMode,
     columnMapping: ExcelColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
+  onImportCsv: (
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) => Promise<ImportTableCsvResult>;
 }>();
 
 const emit = defineEmits<{
@@ -42,8 +61,14 @@ const emit = defineEmits<{
 
 const selectedExcelTableName = ref("");
 const columnMapping = ref<ExcelColumnMappingPayload[]>([]);
-const preview = ref<PreviewExcelTableImportResult | null>(null);
+const preview = ref<ImportPreview | null>(null);
 const busy = ref(false);
+
+const isExcelSource = computed(() => props.sourceKind === "excel");
+const dialogTitle = computed(() =>
+  isExcelSource.value ? "Excelインポート" : "CSVインポート"
+);
+const sourceLabel = computed(() => (isExcelSource.value ? "Excel列" : "CSV列"));
 
 const excelTableItems = computed(
   () =>
@@ -66,6 +91,16 @@ const selectedExcelTable = computed(
 const hasExcelTables = computed(
   () => (props.inspectResult?.tables.length ?? 0) > 0
 );
+const hasImportSource = computed(() =>
+  isExcelSource.value
+    ? (props.inspectResult?.tables.length ?? 0) > 0
+    : Boolean(props.csvInspectResult)
+);
+const sourceColumnNames = computed(() =>
+  isExcelSource.value
+    ? (selectedExcelTable.value?.columnNames ?? [])
+    : (props.csvInspectResult?.headers ?? [])
+);
 const canImport = computed(
   () => Boolean(preview.value) && (preview.value?.errors.length ?? 0) === 0
 );
@@ -77,16 +112,27 @@ const formattedErrors = computed(() =>
 );
 
 watch(
-  () => props.inspectResult,
-  (result) => {
-    if (!result) {
+  () =>
+    [props.sourceKind, props.inspectResult, props.csvInspectResult] as const,
+  ([sourceKind, excelResult, csvResult]) => {
+    if (sourceKind === "csv") {
+      selectedExcelTableName.value = "";
+      columnMapping.value = [];
+      preview.value = null;
+      if (csvResult) {
+        void refreshPreview(true);
+      }
+      return;
+    }
+
+    if (!excelResult) {
       selectedExcelTableName.value = "";
       columnMapping.value = [];
       preview.value = null;
       return;
     }
     selectedExcelTableName.value =
-      result.suggestedTableName ?? result.tables[0]?.name ?? "";
+      excelResult.suggestedTableName ?? excelResult.tables[0]?.name ?? "";
     columnMapping.value = [];
     void refreshPreview(true);
   },
@@ -101,19 +147,32 @@ watch(
 );
 
 async function refreshPreview(resetMapping: boolean) {
-  if (!props.table || !selectedExcelTableName.value || busy.value) {
+  if (!props.table || busy.value) {
+    return;
+  }
+  if (isExcelSource.value && !selectedExcelTableName.value) {
+    return;
+  }
+  if (!isExcelSource.value && !props.csvInspectResult) {
     return;
   }
 
   busy.value = true;
   try {
-    const nextPreview = await props.onPreview(
-      props.table.id,
-      props.inputPath,
-      selectedExcelTableName.value,
-      props.mode,
-      resetMapping ? [] : columnMapping.value
-    );
+    const nextPreview = isExcelSource.value
+      ? await props.onPreview(
+          props.table.id,
+          props.inputPath,
+          selectedExcelTableName.value,
+          props.mode,
+          resetMapping ? [] : columnMapping.value
+        )
+      : await props.onPreviewCsv(
+          props.table.id,
+          props.inputPath,
+          props.mode,
+          resetMapping ? [] : columnMapping.value
+        );
     preview.value = nextPreview;
     columnMapping.value = nextPreview.columnMappings.map((mapping) => ({
       targetColumnName: mapping.targetColumnName,
@@ -153,19 +212,29 @@ function updateSourceColumn(
 }
 
 async function handleImport() {
-  if (!props.table || !selectedExcelTableName.value || !canImport.value) {
+  if (!props.table || !canImport.value) {
+    return;
+  }
+  if (isExcelSource.value && !selectedExcelTableName.value) {
     return;
   }
 
   busy.value = true;
   try {
-    const result = await props.onImport(
-      props.table.id,
-      props.inputPath,
-      selectedExcelTableName.value,
-      props.mode,
-      columnMapping.value
-    );
+    const result = isExcelSource.value
+      ? await props.onImport(
+          props.table.id,
+          props.inputPath,
+          selectedExcelTableName.value,
+          props.mode,
+          columnMapping.value
+        )
+      : await props.onImportCsv(
+          props.table.id,
+          props.inputPath,
+          props.mode,
+          columnMapping.value
+        );
     emit("imported", result);
     emit("update:modelValue", false);
   } catch (error) {
@@ -184,14 +253,14 @@ async function handleImport() {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <v-card rounded="xl">
-      <v-card-title>Excelインポート</v-card-title>
+      <v-card-title>{{ dialogTitle }}</v-card-title>
       <v-card-subtitle v-if="table">
         {{ table.displayName }} に取り込みます
       </v-card-subtitle>
 
       <v-card-text class="excel-import-dialog">
         <v-alert
-          v-if="!hasExcelTables"
+          v-if="isExcelSource && !hasExcelTables"
           type="warning"
           variant="tonal"
           class="excel-import-alert"
@@ -200,8 +269,9 @@ async function handleImport() {
           > テーブル でテーブル化してから再度選択してください。
         </v-alert>
 
-        <template v-else>
+        <template v-else-if="hasImportSource">
           <v-select
+            v-if="isExcelSource"
             v-model="selectedExcelTableName"
             :items="excelTableItems"
             label="取り込むExcelテーブル"
@@ -212,7 +282,7 @@ async function handleImport() {
           />
 
           <v-alert
-            v-if="inspectResult?.lastUsedTableName"
+            v-if="isExcelSource && inspectResult?.lastUsedTableName"
             type="info"
             variant="tonal"
             density="compact"
@@ -255,8 +325,8 @@ async function handleImport() {
                 </div>
                 <v-select
                   :model-value="sourceColumnFor(mapping.targetColumnName)"
-                  :items="selectedExcelTable?.columnNames ?? []"
-                  label="Excel列"
+                  :items="sourceColumnNames"
+                  :label="sourceLabel"
                   clearable
                   density="compact"
                   hide-details

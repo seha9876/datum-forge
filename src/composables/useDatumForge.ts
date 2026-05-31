@@ -506,11 +506,35 @@ export function useDatumForge() {
   async function importTableCsv(
     tableId: number,
     inputPath: string,
-    mode: ImportTableCsvMode
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
   ) {
-    const result = await store.importTableCsv({ tableId, inputPath, mode });
+    const result = await store.importTableCsv({
+      tableId,
+      inputPath,
+      mode,
+      columnMapping
+    });
     resetRecordForm();
     return result;
+  }
+
+  async function inspectCsvImport(tableId: number, inputPath: string) {
+    return await store.inspectCsvImport({ tableId, inputPath });
+  }
+
+  async function previewCsvImport(
+    tableId: number,
+    inputPath: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) {
+    return await store.previewCsvImport({
+      tableId,
+      inputPath,
+      mode,
+      columnMapping
+    });
   }
 
   async function inspectExcelTables(tableId: number, inputPath: string) {
@@ -563,7 +587,9 @@ export function useDatumForge() {
     deleteRecord,
     deleteTable,
     exportTableCsv,
+    inspectCsvImport,
     inspectExcelTables,
+    previewCsvImport,
     previewExcelTableImport,
     importExcelTable,
     importTableCsv,

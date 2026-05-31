@@ -465,6 +465,7 @@ export interface ImportTableCsvPayload {
   tableId: number;
   inputPath: string;
   mode: ImportTableCsvMode;
+  columnMapping: ExcelColumnMappingPayload[];
 }
 
 export type ImportTableCsvStatus = "success" | "warning";
@@ -486,6 +487,24 @@ export interface InspectExcelTablesPayload {
 export interface ExcelColumnMappingPayload {
   targetColumnName: string;
   sourceColumnName: string;
+}
+
+export interface InspectCsvImportPayload {
+  tableId: number;
+  inputPath: string;
+}
+
+export interface InspectCsvImportResult {
+  headers: string[];
+  rowCount: number;
+  columnMappings: ExcelColumnMappingSuggestion[];
+}
+
+export interface PreviewCsvImportPayload {
+  tableId: number;
+  inputPath: string;
+  mode: ImportTableCsvMode;
+  columnMapping: ExcelColumnMappingPayload[];
 }
 
 export interface PreviewExcelTableImportPayload {
@@ -529,6 +548,19 @@ export interface ExcelColumnMappingSuggestion {
 
 export interface PreviewExcelTableImportResult {
   excelTable: ExcelTableInfo;
+  columnMappings: ExcelColumnMappingSuggestion[];
+  previewRows: Array<Record<string, string>>;
+  totalRows: number;
+  insertedCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface PreviewCsvImportResult {
   columnMappings: ExcelColumnMappingSuggestion[];
   previewRows: Array<Record<string, string>>;
   totalRows: number;
