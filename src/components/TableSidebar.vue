@@ -6,12 +6,12 @@ import { useAppNotifications } from "../composables/useAppNotifications";
 import { useConfirmDialog } from "../composables/useConfirmDialog";
 import { formatImportNotificationDetails } from "../utils/importErrorMessages";
 
-import ExcelImportDialog from "./ExcelImportDialog.vue";
+import TableImportDialog from "./TableImportDialog.vue";
 
 import type {
   AppBootstrap,
   AppTableSummary,
-  ExcelColumnMappingPayload,
+  ImportColumnMappingPayload,
   ImportTableCsvMode,
   ImportTableCsvResult,
   InspectCsvImportResult,
@@ -64,13 +64,13 @@ const props = defineProps<{
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
   onImportTableCsv: (
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
   onInspectCsvImport: (
     tableId: number,
@@ -87,13 +87,13 @@ const props = defineProps<{
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<PreviewExcelTableImportResult>;
   onPreviewCsvImport: (
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<PreviewCsvImportResult>;
 }>();
 
@@ -101,11 +101,13 @@ const confirmDialog = useConfirmDialog();
 const appNotifications = useAppNotifications();
 /** 通常クリック時に使う、現在選択中の共通インポート方式です。 */
 const selectedImportMode = ref<ImportTableCsvMode>(loadTableImportMode());
-const isExcelImportDialogOpen = ref(false);
+const isTableImportDialogOpen = ref(false);
 const importSourceKind = ref<"csv" | "excel">("excel");
-const excelImportTable = ref<AppTableSummary | null>(null);
-const excelImportInputPath = ref("");
-const excelImportInspectResult = ref<InspectExcelTablesResult | null>(null);
+const tableImportTable = ref<AppTableSummary | null>(null);
+const tableImportInputPath = ref("");
+const tableImportExcelInspectResult = ref<InspectExcelTablesResult | null>(
+  null
+);
 const csvImportInspectResult = ref<InspectCsvImportResult | null>(null);
 
 /** localStorageから読んだ文字列が、実際にサポートしている方式か確認します。 */
@@ -159,7 +161,7 @@ function importResultMessage(status: ImportTableCsvResult["status"]) {
     : "CSVの取り込みが完了しました。";
 }
 
-function excelImportResultMessage(status: ImportTableCsvResult["status"]) {
+function excelResultMessage(status: ImportTableCsvResult["status"]) {
   return status === "warning"
     ? "Excelの取り込みは完了しましたが、確認が必要な行があります。"
     : "Excelの取り込みが完了しました。";
@@ -223,14 +225,14 @@ async function handleExportTableCsv(table: AppTableSummary) {
 async function prepareCsvImport(table: AppTableSummary, inputPath: string) {
   try {
     importSourceKind.value = "csv";
-    excelImportTable.value = table;
-    excelImportInputPath.value = inputPath;
-    excelImportInspectResult.value = null;
+    tableImportTable.value = table;
+    tableImportInputPath.value = inputPath;
+    tableImportExcelInspectResult.value = null;
     csvImportInspectResult.value = await props.onInspectCsvImport(
       table.id,
       inputPath
     );
-    isExcelImportDialogOpen.value = true;
+    isTableImportDialogOpen.value = true;
   } catch (error) {
     appNotifications.notify({
       kind: "error",
@@ -250,14 +252,14 @@ async function prepareCsvImport(table: AppTableSummary, inputPath: string) {
 async function prepareExcelImport(table: AppTableSummary, inputPath: string) {
   try {
     importSourceKind.value = "excel";
-    excelImportTable.value = table;
-    excelImportInputPath.value = inputPath;
+    tableImportTable.value = table;
+    tableImportInputPath.value = inputPath;
     csvImportInspectResult.value = null;
-    excelImportInspectResult.value = await props.onInspectExcelTables(
+    tableImportExcelInspectResult.value = await props.onInspectExcelTables(
       table.id,
       inputPath
     );
-    isExcelImportDialogOpen.value = true;
+    isTableImportDialogOpen.value = true;
   } catch (error) {
     appNotifications.notify({
       kind: "error",
@@ -334,7 +336,7 @@ function notifyTableImportResult(result: ImportTableCsvResult) {
     kind: result.status,
     title: importResultTitle(result.status),
     message: isExcel
-      ? excelImportResultMessage(result.status)
+      ? excelResultMessage(result.status)
       : importResultMessage(result.status),
     metrics: {
       insertedCount: result.insertedCount,
@@ -576,13 +578,13 @@ async function handleDeleteTable(table: AppTableSummary) {
     </template>
   </div>
 
-  <ExcelImportDialog
-    v-model="isExcelImportDialogOpen"
+  <TableImportDialog
+    v-model="isTableImportDialogOpen"
     :source-kind="importSourceKind"
-    :table="excelImportTable"
-    :input-path="excelImportInputPath"
+    :table="tableImportTable"
+    :input-path="tableImportInputPath"
     :csv-inspect-result="csvImportInspectResult"
-    :inspect-result="excelImportInspectResult"
+    :inspect-result="tableImportExcelInspectResult"
     :mode="selectedImportMode"
     :on-preview-csv="onPreviewCsvImport"
     :on-preview="onPreviewExcelTableImport"

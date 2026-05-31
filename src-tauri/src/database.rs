@@ -351,7 +351,7 @@ pub struct ImportTableCsvPayload {
     /// ID重複時の扱いを決めるインポート方式です。
     pub mode: ImportTableCsvMode,
     /// Datum Forge列とCSVヘッダーの対応付けです。
-    pub column_mapping: Vec<ExcelColumnMappingPayload>,
+    pub column_mapping: Vec<ImportColumnMappingPayload>,
 }
 
 #[derive(Debug, Serialize)]
@@ -387,7 +387,7 @@ pub struct InspectCsvImportPayload {
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ExcelColumnMappingPayload {
+pub struct ImportColumnMappingPayload {
     pub target_column_name: String,
     pub source_column_name: String,
 }
@@ -397,7 +397,7 @@ pub struct ExcelColumnMappingPayload {
 pub struct InspectCsvImportResult {
     pub headers: Vec<String>,
     pub row_count: usize,
-    pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
+    pub column_mappings: Vec<ImportColumnMappingSuggestion>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -406,7 +406,7 @@ pub struct PreviewCsvImportPayload {
     pub table_id: i64,
     pub input_path: String,
     pub mode: ImportTableCsvMode,
-    pub column_mapping: Vec<ExcelColumnMappingPayload>,
+    pub column_mapping: Vec<ImportColumnMappingPayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -416,7 +416,7 @@ pub struct PreviewExcelTableImportPayload {
     pub input_path: String,
     pub excel_table_name: String,
     pub mode: ImportTableCsvMode,
-    pub column_mapping: Vec<ExcelColumnMappingPayload>,
+    pub column_mapping: Vec<ImportColumnMappingPayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -426,7 +426,7 @@ pub struct ImportExcelTablePayload {
     pub input_path: String,
     pub excel_table_name: String,
     pub mode: ImportTableCsvMode,
-    pub column_mapping: Vec<ExcelColumnMappingPayload>,
+    pub column_mapping: Vec<ImportColumnMappingPayload>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -450,7 +450,7 @@ pub struct InspectExcelTablesResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExcelColumnMappingSuggestion {
+pub struct ImportColumnMappingSuggestion {
     pub target_column_name: String,
     pub target_display_name: String,
     pub source_column_name: Option<String>,
@@ -462,7 +462,7 @@ pub struct ExcelColumnMappingSuggestion {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewExcelTableImportResult {
     pub excel_table: ExcelTableInfo,
-    pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
+    pub column_mappings: Vec<ImportColumnMappingSuggestion>,
     pub preview_rows: Vec<HashMap<String, String>>,
     pub total_rows: usize,
     pub inserted_count: usize,
@@ -477,7 +477,7 @@ pub struct PreviewExcelTableImportResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewCsvImportResult {
-    pub column_mappings: Vec<ExcelColumnMappingSuggestion>,
+    pub column_mappings: Vec<ImportColumnMappingSuggestion>,
     pub preview_rows: Vec<HashMap<String, String>>,
     pub total_rows: usize,
     pub inserted_count: usize,
@@ -2042,7 +2042,7 @@ impl Db {
         let columns = self.list_columns(payload.table_id)?;
         let select_option_maps = self.csv_select_option_maps(&columns)?;
         let resolved_mapping =
-            resolve_excel_column_mapping(&columns, &headers, &payload.column_mapping);
+            resolve_import_column_mapping(&columns, &headers, &payload.column_mapping);
         let preview = build_csv_import_preview(
             &self.conn,
             &table.table_name,
@@ -2129,7 +2129,7 @@ impl Db {
 
         let columns = self.list_columns(payload.table_id)?;
         let (headers, rows) = read_csv_import_source(input_path)?;
-        let mapping = resolve_excel_column_mapping(&columns, &headers, &[]);
+        let mapping = resolve_import_column_mapping(&columns, &headers, &[]);
 
         Ok(InspectCsvImportResult {
             headers,
@@ -2152,7 +2152,7 @@ impl Db {
         let select_option_maps = self.csv_select_option_maps(&columns)?;
         let (headers, rows) = read_csv_import_source(input_path)?;
         let resolved_mapping =
-            resolve_excel_column_mapping(&columns, &headers, &payload.column_mapping);
+            resolve_import_column_mapping(&columns, &headers, &payload.column_mapping);
 
         build_csv_import_preview(
             &self.conn,
@@ -2200,7 +2200,7 @@ impl Db {
         let workbook = ExcelWorkbook::open(payload.input_path.trim())?;
         let excel_table = workbook.table_by_name(&payload.excel_table_name)?;
         let select_option_maps = self.csv_select_option_maps(&columns)?;
-        let resolved_mapping = resolve_excel_column_mapping(
+        let resolved_mapping = resolve_import_column_mapping(
             &columns,
             &excel_table.info.column_names,
             &payload.column_mapping,
@@ -2228,7 +2228,7 @@ impl Db {
         let workbook = ExcelWorkbook::open(payload.input_path.trim())?;
         let excel_table = workbook.table_by_name(&payload.excel_table_name)?;
         let select_option_maps = self.csv_select_option_maps(&columns)?;
-        let resolved_mapping = resolve_excel_column_mapping(
+        let resolved_mapping = resolve_import_column_mapping(
             &columns,
             &excel_table.info.column_names,
             &payload.column_mapping,
@@ -5103,7 +5103,7 @@ struct CsvSourceRow {
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedExcelColumnMapping {
+struct ResolvedImportColumnMapping {
     column: AppColumn,
     source_column_name: Option<String>,
     matched_by: Option<String>,
@@ -5543,11 +5543,11 @@ fn suggest_excel_table_name(
         .map(|item| item.name.clone())
 }
 
-fn resolve_excel_column_mapping(
+fn resolve_import_column_mapping(
     columns: &[AppColumn],
     excel_column_names: &[String],
-    payload: &[ExcelColumnMappingPayload],
-) -> Vec<ResolvedExcelColumnMapping> {
+    payload: &[ImportColumnMappingPayload],
+) -> Vec<ResolvedImportColumnMapping> {
     let manual = payload
         .iter()
         .filter(|mapping| !mapping.source_column_name.trim().is_empty())
@@ -5563,7 +5563,7 @@ fn resolve_excel_column_mapping(
         .iter()
         .map(|column| {
             if let Some(source) = manual.get(&column.column_name) {
-                return ResolvedExcelColumnMapping {
+                return ResolvedImportColumnMapping {
                     column: column.clone(),
                     source_column_name: Some(source.clone()),
                     matched_by: Some("manual".into()),
@@ -5573,7 +5573,7 @@ fn resolve_excel_column_mapping(
                 .iter()
                 .find(|name| **name == column.column_name)
             {
-                return ResolvedExcelColumnMapping {
+                return ResolvedImportColumnMapping {
                     column: column.clone(),
                     source_column_name: Some(source.clone()),
                     matched_by: Some("物理名".into()),
@@ -5583,13 +5583,13 @@ fn resolve_excel_column_mapping(
                 .iter()
                 .find(|name| **name == column.display_name)
             {
-                return ResolvedExcelColumnMapping {
+                return ResolvedImportColumnMapping {
                     column: column.clone(),
                     source_column_name: Some(source.clone()),
                     matched_by: Some("論理名".into()),
                 };
             }
-            ResolvedExcelColumnMapping {
+            ResolvedImportColumnMapping {
                 column: column.clone(),
                 source_column_name: None,
                 matched_by: None,
@@ -5599,11 +5599,11 @@ fn resolve_excel_column_mapping(
 }
 
 fn import_column_mapping_suggestions(
-    mapping: &[ResolvedExcelColumnMapping],
-) -> Vec<ExcelColumnMappingSuggestion> {
+    mapping: &[ResolvedImportColumnMapping],
+) -> Vec<ImportColumnMappingSuggestion> {
     mapping
         .iter()
-        .map(|mapping| ExcelColumnMappingSuggestion {
+        .map(|mapping| ImportColumnMappingSuggestion {
             target_column_name: mapping.column.column_name.clone(),
             target_display_name: mapping.column.display_name.clone(),
             source_column_name: mapping.source_column_name.clone(),
@@ -5619,7 +5619,7 @@ fn build_csv_import_preview(
     columns: &[AppColumn],
     headers: &[String],
     rows: &[CsvSourceRow],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
     select_option_maps: &HashMap<String, HashMap<String, i64>>,
     mode: ImportTableCsvMode,
 ) -> Result<PreviewCsvImportResult, DbError> {
@@ -5700,7 +5700,7 @@ fn build_excel_import_preview(
     columns: &[AppColumn],
     excel_table: &ExcelTable,
     rows: &[ExcelSourceRow],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
     select_option_maps: &HashMap<String, HashMap<String, i64>>,
     mode: ImportTableCsvMode,
 ) -> Result<PreviewExcelTableImportResult, DbError> {
@@ -5779,7 +5779,7 @@ fn build_excel_import_preview(
 fn validate_import_mapping(
     source_label: &str,
     source_names: &[String],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
 ) -> Vec<String> {
     let mut errors = Vec::new();
     let mut used_sources = HashSet::new();
@@ -5813,7 +5813,7 @@ fn validate_import_mapping(
 fn import_mapping_warnings(
     source_label: &str,
     source_names: &[String],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
 ) -> Vec<String> {
     let used_sources = mapping
         .iter()
@@ -5865,7 +5865,7 @@ fn read_csv_import_source(input_path: &str) -> Result<(Vec<String>, Vec<CsvSourc
 fn csv_row_to_values(
     row: &CsvSourceRow,
     columns: &[AppColumn],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
     select_option_maps: &HashMap<String, HashMap<String, i64>>,
 ) -> Result<HashMap<String, Value>, DbError> {
     let mut values = HashMap::new();
@@ -5900,7 +5900,7 @@ fn csv_row_to_values(
 
 fn csv_preview_row(
     row: &CsvSourceRow,
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
 ) -> HashMap<String, String> {
     mapping
         .iter()
@@ -5917,7 +5917,7 @@ fn csv_preview_row(
 fn excel_row_to_values(
     row: &ExcelSourceRow,
     columns: &[AppColumn],
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
     select_option_maps: &HashMap<String, HashMap<String, i64>>,
 ) -> Result<HashMap<String, Value>, DbError> {
     let mut values = HashMap::new();
@@ -5952,7 +5952,7 @@ fn excel_row_to_values(
 
 fn excel_preview_row(
     row: &ExcelSourceRow,
-    mapping: &[ResolvedExcelColumnMapping],
+    mapping: &[ResolvedImportColumnMapping],
 ) -> HashMap<String, String> {
     mapping
         .iter()

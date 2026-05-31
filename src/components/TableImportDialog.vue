@@ -5,7 +5,7 @@ import { formatImportMessages } from "../utils/importErrorMessages";
 
 import type {
   AppTableSummary,
-  ExcelColumnMappingPayload,
+  ImportColumnMappingPayload,
   ImportTableCsvMode,
   ImportTableCsvResult,
   InspectCsvImportResult,
@@ -29,27 +29,27 @@ const props = defineProps<{
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<PreviewCsvImportResult>;
   onPreview: (
     tableId: number,
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<PreviewExcelTableImportResult>;
   onImport: (
     tableId: number,
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
   onImportCsv: (
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) => Promise<ImportTableCsvResult>;
 }>();
 
@@ -60,7 +60,7 @@ const emit = defineEmits<{
 }>();
 
 const selectedExcelTableName = ref("");
-const columnMapping = ref<ExcelColumnMappingPayload[]>([]);
+const columnMapping = ref<ImportColumnMappingPayload[]>([]);
 const preview = ref<ImportPreview | null>(null);
 const busy = ref(false);
 
@@ -258,12 +258,12 @@ async function handleImport() {
         {{ table.displayName }} に取り込みます
       </v-card-subtitle>
 
-      <v-card-text class="excel-import-dialog">
+      <v-card-text class="table-import-dialog">
         <v-alert
           v-if="isExcelSource && !hasExcelTables"
           type="warning"
           variant="tonal"
-          class="excel-import-alert"
+          class="table-import-alert"
         >
           このExcelファイルには、Excelの「テーブル」として設定された範囲が見つかりません。Excelで範囲を選択し、挿入
           > テーブル でテーブル化してから再度選択してください。
@@ -291,8 +291,8 @@ async function handleImport() {
             {{ inspectResult.lastUsedTableName }}
           </v-alert>
 
-          <section v-if="preview" class="excel-import-section">
-            <div class="excel-import-section-heading">
+          <section v-if="preview" class="table-import-section">
+            <div class="table-import-section-heading">
               <h3>列マッピング</h3>
               <v-btn
                 size="small"
@@ -303,11 +303,11 @@ async function handleImport() {
                 プレビュー更新
               </v-btn>
             </div>
-            <div class="excel-import-mapping-grid">
+            <div class="table-import-mapping-grid">
               <div
                 v-for="mapping in preview.columnMappings"
                 :key="mapping.targetColumnName"
-                class="excel-import-mapping-row"
+                class="table-import-mapping-row"
               >
                 <div>
                   <strong>{{ mapping.targetDisplayName }}</strong>
@@ -339,9 +339,9 @@ async function handleImport() {
             </div>
           </section>
 
-          <section v-if="preview" class="excel-import-section">
+          <section v-if="preview" class="table-import-section">
             <h3>差分確認</h3>
-            <div class="excel-import-metrics">
+            <div class="table-import-metrics">
               <v-chip color="success" variant="tonal">
                 追加 {{ preview.insertedCount }}
               </v-chip>
@@ -367,11 +367,11 @@ async function handleImport() {
           <div
             v-for="warning in formattedWarnings"
             :key="warning.id"
-            class="excel-import-message excel-import-message-warning"
+            class="table-import-message table-import-message-warning"
             role="alert"
           >
             <v-icon icon="mdi-alert-circle" size="small" />
-            <div class="excel-import-message-body">
+            <div class="table-import-message-body">
               <span>{{ warning.message }}</span>
               <small v-if="warning.rowSummary">
                 対象行: {{ warning.rowSummary }}
@@ -379,7 +379,7 @@ async function handleImport() {
               <small>{{ warning.action }}</small>
               <details
                 v-if="warning.details.length > 0"
-                class="excel-import-message-details"
+                class="table-import-message-details"
               >
                 <summary>詳細</summary>
                 <ul>
@@ -394,11 +394,11 @@ async function handleImport() {
           <div
             v-for="error in formattedErrors"
             :key="error.id"
-            class="excel-import-message excel-import-message-error"
+            class="table-import-message table-import-message-error"
             role="alert"
           >
             <v-icon icon="mdi-alert-circle" size="small" />
-            <div class="excel-import-message-body">
+            <div class="table-import-message-body">
               <span>{{ error.message }}</span>
               <small v-if="error.rowSummary">
                 対象行: {{ error.rowSummary }}
@@ -406,7 +406,7 @@ async function handleImport() {
               <small>{{ error.action }}</small>
               <details
                 v-if="error.details.length > 0"
-                class="excel-import-message-details"
+                class="table-import-message-details"
               >
                 <summary>詳細</summary>
                 <ul>
@@ -418,10 +418,10 @@ async function handleImport() {
             </div>
           </div>
 
-          <section v-if="preview" class="excel-import-section">
+          <section v-if="preview" class="table-import-section">
             <h3>プレビュー</h3>
-            <div class="excel-import-preview-table-wrap">
-              <v-table density="compact" class="excel-import-preview-table">
+            <div class="table-import-preview-table-wrap">
+              <v-table density="compact" class="table-import-preview-table">
                 <thead>
                   <tr>
                     <th
@@ -468,49 +468,49 @@ async function handleImport() {
 </template>
 
 <style scoped>
-.excel-import-dialog {
+.table-import-dialog {
   display: grid;
   gap: 1rem;
 }
 
-.excel-import-section {
+.table-import-section {
   display: grid;
   gap: 0.75rem;
 }
 
-.excel-import-section-heading {
+.table-import-section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
-.excel-import-mapping-grid {
+.table-import-mapping-grid {
   display: grid;
   gap: 0.5rem;
 }
 
-.excel-import-mapping-row {
+.table-import-mapping-row {
   display: grid;
   grid-template-columns: minmax(11rem, 0.9fr) minmax(0, 1.1fr);
   gap: 0.75rem;
   align-items: center;
 }
 
-.excel-import-mapping-row > div:first-child {
+.table-import-mapping-row > div:first-child {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
 }
 
-.excel-import-metrics {
+.table-import-metrics {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.excel-import-alert {
+.table-import-alert {
   align-items: flex-start;
   line-height: 1.45;
   min-height: auto;
@@ -519,7 +519,7 @@ async function handleImport() {
   white-space: normal;
 }
 
-.excel-import-alert :deep(.v-alert__content) {
+.table-import-alert :deep(.v-alert__content) {
   align-self: flex-start;
   overflow: visible;
   overflow-wrap: anywhere;
@@ -527,16 +527,16 @@ async function handleImport() {
   white-space: normal;
 }
 
-.excel-import-alert :deep(.v-alert__prepend) {
+.table-import-alert :deep(.v-alert__prepend) {
   align-self: flex-start;
   margin-top: 0.1rem;
 }
 
-.excel-import-alert :deep(.v-alert__prepend > .v-icon) {
+.table-import-alert :deep(.v-alert__prepend > .v-icon) {
   flex: 0 0 auto;
 }
 
-.excel-import-message {
+.table-import-message {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.65rem;
@@ -548,65 +548,65 @@ async function handleImport() {
   white-space: normal;
 }
 
-.excel-import-message .v-icon {
+.table-import-message .v-icon {
   margin-top: 0.1rem;
 }
 
-.excel-import-message-body {
+.table-import-message-body {
   display: grid;
   gap: 0.2rem;
   min-width: 0;
 }
 
-.excel-import-message-body small {
+.table-import-message-body small {
   color: rgb(var(--v-theme-on-surface));
 }
 
-.excel-import-message-details {
+.table-import-message-details {
   margin-top: 0.15rem;
   color: rgb(var(--v-theme-on-surface));
   font-size: 0.82rem;
 }
 
-.excel-import-message-details summary {
+.table-import-message-details summary {
   cursor: pointer;
   font-weight: 700;
 }
 
-.excel-import-message-details ul {
+.table-import-message-details ul {
   margin: 0.35rem 0 0;
   padding-left: 1rem;
 }
 
-.excel-import-message-warning {
+.table-import-message-warning {
   background: rgba(var(--v-theme-warning), 0.14);
   color: rgb(var(--v-theme-on-surface));
 }
 
-.excel-import-message-warning .v-icon {
+.table-import-message-warning .v-icon {
   color: rgb(var(--v-theme-warning));
 }
 
-.excel-import-message-error {
+.table-import-message-error {
   background: rgba(var(--v-theme-error), 0.14);
   color: rgb(var(--v-theme-error));
 }
 
-.excel-import-message-error .v-icon {
+.table-import-message-error .v-icon {
   color: rgb(var(--v-theme-error));
 }
 
-.excel-import-preview-table-wrap {
+.table-import-preview-table-wrap {
   max-height: 280px;
   overflow: auto;
 }
 
-.excel-import-preview-table {
+.table-import-preview-table {
   min-width: max-content;
 }
 
-.excel-import-preview-table :deep(th),
-.excel-import-preview-table :deep(td) {
+.table-import-preview-table :deep(th),
+.table-import-preview-table :deep(td) {
   max-width: 14rem;
   overflow: hidden;
   text-overflow: ellipsis;

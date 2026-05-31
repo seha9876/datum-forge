@@ -7,7 +7,7 @@ import type {
   AppColumn,
   FieldType,
   ImportTableCsvMode,
-  ExcelColumnMappingPayload,
+  ImportColumnMappingPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
   SelectOptionGroup,
@@ -507,7 +507,7 @@ export function useDatumForge() {
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) {
     const result = await store.importTableCsv({
       tableId,
@@ -527,7 +527,7 @@ export function useDatumForge() {
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) {
     return await store.previewCsvImport({
       tableId,
@@ -546,7 +546,7 @@ export function useDatumForge() {
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) {
     return await store.previewExcelTableImport({
       tableId,
@@ -562,7 +562,7 @@ export function useDatumForge() {
     inputPath: string,
     excelTableName: string,
     mode: ImportTableCsvMode,
-    columnMapping: ExcelColumnMappingPayload[]
+    columnMapping: ImportColumnMappingPayload[]
   ) {
     const result = await store.importExcelTable({
       tableId,

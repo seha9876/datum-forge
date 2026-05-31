@@ -465,7 +465,7 @@ export interface ImportTableCsvPayload {
   tableId: number;
   inputPath: string;
   mode: ImportTableCsvMode;
-  columnMapping: ExcelColumnMappingPayload[];
+  columnMapping: ImportColumnMappingPayload[];
 }
 
 export type ImportTableCsvStatus = "success" | "warning";
@@ -484,7 +484,7 @@ export interface InspectExcelTablesPayload {
   inputPath: string;
 }
 
-export interface ExcelColumnMappingPayload {
+export interface ImportColumnMappingPayload {
   targetColumnName: string;
   sourceColumnName: string;
 }
@@ -497,14 +497,14 @@ export interface InspectCsvImportPayload {
 export interface InspectCsvImportResult {
   headers: string[];
   rowCount: number;
-  columnMappings: ExcelColumnMappingSuggestion[];
+  columnMappings: ImportColumnMappingSuggestion[];
 }
 
 export interface PreviewCsvImportPayload {
   tableId: number;
   inputPath: string;
   mode: ImportTableCsvMode;
-  columnMapping: ExcelColumnMappingPayload[];
+  columnMapping: ImportColumnMappingPayload[];
 }
 
 export interface PreviewExcelTableImportPayload {
@@ -512,7 +512,7 @@ export interface PreviewExcelTableImportPayload {
   inputPath: string;
   excelTableName: string;
   mode: ImportTableCsvMode;
-  columnMapping: ExcelColumnMappingPayload[];
+  columnMapping: ImportColumnMappingPayload[];
 }
 
 export interface ImportExcelTablePayload {
@@ -520,7 +520,7 @@ export interface ImportExcelTablePayload {
   inputPath: string;
   excelTableName: string;
   mode: ImportTableCsvMode;
-  columnMapping: ExcelColumnMappingPayload[];
+  columnMapping: ImportColumnMappingPayload[];
 }
 
 export interface ExcelTableInfo {
@@ -538,7 +538,7 @@ export interface InspectExcelTablesResult {
   lastUsedTableName: string | null;
 }
 
-export interface ExcelColumnMappingSuggestion {
+export interface ImportColumnMappingSuggestion {
   targetColumnName: string;
   targetDisplayName: string;
   sourceColumnName: string | null;
@@ -548,7 +548,7 @@ export interface ExcelColumnMappingSuggestion {
 
 export interface PreviewExcelTableImportResult {
   excelTable: ExcelTableInfo;
-  columnMappings: ExcelColumnMappingSuggestion[];
+  columnMappings: ImportColumnMappingSuggestion[];
   previewRows: Array<Record<string, string>>;
   totalRows: number;
   insertedCount: number;
@@ -561,7 +561,7 @@ export interface PreviewExcelTableImportResult {
 }
 
 export interface PreviewCsvImportResult {
-  columnMappings: ExcelColumnMappingSuggestion[];
+  columnMappings: ImportColumnMappingSuggestion[];
   previewRows: Array<Record<string, string>>;
   totalRows: number;
   insertedCount: number;
