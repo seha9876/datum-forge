@@ -1,8 +1,6 @@
-//! Tauri アプリで使う SQLite バックエンド実装です。
+//! SQLite backend implementation for the Tauri app.
 //!
-//! このモジュールはフロントエンド IPC の入出力型定義、メタデータ用テーブルの
-//! スキーマ初期化、テーブル/カラム/タグ/閲覧レイアウトの永続化を担当します。
-
+//! Defines IPC payloads and persists metadata, tables, columns, tags, and view layouts.
 use rusqlite::{params, params_from_iter, types::ValueRef, Connection, OptionalExtension, ToSql};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

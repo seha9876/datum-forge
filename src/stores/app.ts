@@ -48,9 +48,7 @@ export const useAppStore = defineStore("app", {
       this.currentTable = null;
       this.references = {};
     },
-    /**
-     * アプリ全体で必要な初期データを読み込みます。
-     */
+    /** アプリ起動時に必要な初期データを読み込みます。 */
     async initialize() {
       this.loading = true;
       this.error = "";
@@ -76,11 +74,7 @@ export const useAppStore = defineStore("app", {
         this.loading = false;
       }
     },
-    /**
-     * 指定テーブルの詳細を読み込み、必要な参照候補もキャッシュします。
-     *
-     * @param tableId 読み込むテーブルID
-     */
+    /** 指定テーブルの詳細を読み込み、参照型カラムの候補もキャッシュします。 */
     async loadTable(tableId: number) {
       this.selectedTableId = tableId;
       this.currentTable = await api.getTableDetail(tableId);
@@ -95,11 +89,7 @@ export const useAppStore = defineStore("app", {
         }
       }
     },
-    /**
-     * テーブル作成後に一覧と現在テーブルを更新します。
-     *
-     * @param payload 作成するテーブル情報
-     */
+    /** テーブル作成後に一覧と現在テーブルを最新状態へ更新します。 */
     async createTable(payload: CreateTablePayload) {
       const tableId = await api.createTable(payload);
       await this.initialize();
@@ -130,9 +120,7 @@ export const useAppStore = defineStore("app", {
         throw error;
       }
     },
-    /**
-     * CSVを取り込んだ後、サイドバーと一覧の表示を最新状態へ戻します。
-     */
+    /** CSV取り込み後、サイドバーと一覧の表示を最新状態へ戻します。 */
     async importTableCsv(payload: ImportTableCsvPayload) {
       this.error = "";
       try {
@@ -194,11 +182,7 @@ export const useAppStore = defineStore("app", {
         throw error;
       }
     },
-    /**
-     * カラム追加後に最新状態を再読み込みします。
-     *
-     * @param payload 追加するカラム情報
-     */
+    /** カラム追加後にテーブル定義とレコード表示を再読み込みします。 */
     async addColumn(payload: AddColumnPayload) {
       this.error = "";
       try {
@@ -210,60 +194,36 @@ export const useAppStore = defineStore("app", {
         throw error;
       }
     },
-    /**
-     * カラム削除後に最新状態を再読み込みします。
-     *
-     * @param payload 削除対象
-     */
+    /** カラム削除後にテーブル定義とレコード表示を再読み込みします。 */
     async deleteColumn(payload: DeleteColumnPayload) {
       await api.deleteColumn(payload);
       await this.initialize();
       await this.loadTable(payload.tableId);
     },
-    /**
-     * カラム更新後に最新状態を再読み込みします。
-     *
-     * @param payload 更新内容
-     */
+    /** カラム更新後にテーブル定義とレコード表示を再読み込みします。 */
     async updateColumn(payload: UpdateColumnPayload) {
       await api.updateColumn(payload);
       await this.initialize();
       await this.loadTable(payload.tableId);
     },
-    /**
-     * 主表示カラム更新後に最新状態を再読み込みします。
-     *
-     * @param payload 主表示カラム設定
-     */
+    /** 主表示カラム更新後に関連する表示を再読み込みします。 */
     async updateLabelColumn(payload: UpdateLabelColumnPayload) {
       await api.updateLabelColumn(payload);
       await this.initialize();
       await this.loadTable(payload.tableId);
     },
-    /**
-     * カラム並び替え後に最新状態を再読み込みします。
-     *
-     * @param payload 並び替え結果
-     */
+    /** カラム並び替え後にテーブル定義を再読み込みします。 */
     async reorderColumns(payload: ReorderColumnsPayload) {
       await api.reorderColumns(payload);
       await this.initialize();
       await this.loadTable(payload.tableId);
     },
-    /**
-     * 単一選択グループ保存後に初期データを更新します。
-     *
-     * @param payload 保存するグループ情報
-     */
+    /** 選択肢グループ保存後に初期データを更新します。 */
     async saveOptionGroup(payload: SaveOptionGroupPayload) {
       await api.saveOptionGroup(payload);
       await this.initialize();
     },
-    /**
-     * レコード保存後に現在テーブルを再読み込みします。
-     *
-     * @param payload 保存するレコード情報
-     */
+    /** レコード保存後に現在テーブルを再読み込みします。 */
     async saveRecord(payload: SaveRecordPayload) {
       this.error = "";
       try {
@@ -276,11 +236,7 @@ export const useAppStore = defineStore("app", {
         throw error;
       }
     },
-    /**
-     * レコード削除後に現在テーブルを再読み込みします。
-     *
-     * @param payload 削除対象
-     */
+    /** レコード削除後に現在テーブルを再読み込みします。 */
     async deleteRecord(payload: DeleteRecordPayload) {
       await api.deleteRecord(payload);
       if (this.selectedTableId) {

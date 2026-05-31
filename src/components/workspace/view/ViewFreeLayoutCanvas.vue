@@ -3,6 +3,35 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
+import {
+  boxFromPoints,
+  clampViewportScale,
+  DEFAULT_CARD_STYLE,
+  DRAG_THRESHOLD,
+  intersects,
+  MIN_CARD_HEIGHT,
+  MIN_CARD_WIDTH,
+  RESIZE_HANDLES,
+  VIEWPORT_ZOOM_STEP,
+  WORLD_HEIGHT,
+  WORLD_WIDTH
+} from "./ViewFreeLayoutCanvas.helpers";
+
+import type {
+  CanvasElement,
+  InputLikeEvent,
+  InteractionState,
+  KeyboardLikeEvent,
+  LayoutStyleKey,
+  LayoutStyleValue,
+  PanDrag,
+  PointerLikeEvent,
+  PointerTarget,
+  ResizeDirection,
+  SelectionBox,
+  SelectionDrag,
+  WheelLikeEvent
+} from "./ViewFreeLayoutCanvas.helpers";
 import type {
   AppColumn,
   TableDetail,
@@ -15,143 +44,6 @@ import type {
   ViewTableSection
 } from "../../../types";
 import type { CSSProperties } from "vue";
-type RectLike = {
-  bottom: number;
-  left: number;
-  right: number;
-  top: number;
-};
-type CanvasElement = {
-  clientHeight: number;
-  clientWidth: number;
-  getBoundingClientRect: () => RectLike;
-};
-type PointerTarget = {
-  setPointerCapture?: (pointerId: number) => void;
-};
-type PointerLikeEvent = {
-  button?: number;
-  clientX: number;
-  clientY: number;
-  ctrlKey?: boolean;
-  currentTarget: object | null;
-  pointerId: number;
-  preventDefault: () => void;
-  shiftKey: boolean;
-  stopPropagation: () => void;
-};
-type KeyboardLikeEvent = {
-  key: string;
-  preventDefault?: () => void;
-  repeat?: boolean;
-};
-type WheelLikeEvent = {
-  clientX: number;
-  clientY: number;
-  ctrlKey: boolean;
-  deltaY: number;
-  preventDefault: () => void;
-};
-type InputLikeEvent = {
-  target: {
-    checked?: boolean;
-    value: string;
-  } | null;
-};
-type MoveInteraction = {
-  cardId: number;
-  cardIds: number[];
-  moved: boolean;
-  originLayouts: ViewLayoutCardItem[];
-  originalSelection: number[];
-  shiftKey: boolean;
-  startX: number;
-  startY: number;
-  type: "move";
-};
-type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
-type ResizeInteraction = {
-  cardId: number;
-  direction: ResizeDirection;
-  moved: boolean;
-  origin: ViewLayoutCardItem;
-  startX: number;
-  startY: number;
-  type: "resize";
-};
-type InteractionState = MoveInteraction | ResizeInteraction;
-type SelectionBox = {
-  height: number;
-  width: number;
-  x: number;
-  y: number;
-};
-type SelectionDrag = {
-  additive: boolean;
-  initialSelection: number[];
-  moved: boolean;
-  startX: number;
-  startY: number;
-};
-type PanDrag = {
-  startOffsetX: number;
-  startOffsetY: number;
-  startX: number;
-  startY: number;
-};
-type LayoutStyleKey =
-  | "backgroundColor"
-  | "textColor"
-  | "fontSize"
-  | "textDirection"
-  | "fontWeight"
-  | "textAlign"
-  | "padding"
-  | "paddingTop"
-  | "paddingRight"
-  | "paddingBottom"
-  | "paddingLeft"
-  | "borderRadius"
-  | "showLabel";
-
-type LayoutStyleValue = boolean | string | number | null;
-const MIN_CARD_WIDTH = 120;
-const MIN_CARD_HEIGHT = 64;
-const DRAG_THRESHOLD = 4;
-const WORLD_WIDTH = 2400;
-const WORLD_HEIGHT = 1600;
-const MIN_VIEWPORT_SCALE = 0.25;
-const MAX_VIEWPORT_SCALE = 3;
-const VIEWPORT_ZOOM_STEP = 0.15;
-const RESIZE_HANDLES: Array<{
-  direction: ResizeDirection;
-  label: string;
-}> = [
-  { direction: "n", label: "上辺でサイズ変更" },
-  { direction: "e", label: "右辺でサイズ変更" },
-  { direction: "s", label: "下辺でサイズ変更" },
-  { direction: "w", label: "左辺でサイズ変更" },
-  { direction: "ne", label: "右上でサイズ変更" },
-  { direction: "se", label: "右下でサイズ変更" },
-  { direction: "sw", label: "左下でサイズ変更" },
-  { direction: "nw", label: "左上でサイズ変更" }
-];
-const DEFAULT_CARD_STYLE = {
-  backgroundColor: null,
-  borderRadius: 14,
-  fontSize: 16,
-  fontWeight: "bold",
-  padding: 12,
-  paddingTop: 12,
-  paddingRight: 12,
-  paddingBottom: 12,
-  paddingLeft: 12,
-  showLabel: true,
-  textAlign: "left",
-  textColor: null,
-  textDirection: "horizontal"
-} as const;
-
 const props = withDefaults(
   defineProps<{
     detail: TableDetail | null;
@@ -1026,10 +918,6 @@ function viewportPoint(event: PointerLikeEvent | WheelLikeEvent) {
   };
 }
 
-function clampViewportScale(scale: number) {
-  return Math.max(MIN_VIEWPORT_SCALE, Math.min(MAX_VIEWPORT_SCALE, scale));
-}
-
 function resetViewport() {
   viewportScale.value = 1;
   viewportOffsetX.value = 0;
@@ -1393,31 +1281,6 @@ function endPointer() {
   if (current.moved) {
     emitDraftLayouts();
   }
-}
-
-function boxFromPoints(
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-) {
-  const x = Math.min(startX, endX);
-  const y = Math.min(startY, endY);
-  return {
-    height: Math.abs(endY - startY),
-    width: Math.abs(endX - startX),
-    x,
-    y
-  };
-}
-
-function intersects(a: SelectionBox, b: SelectionBox) {
-  return (
-    a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y
-  );
 }
 
 function idsInSelectionBox(box: SelectionBox) {

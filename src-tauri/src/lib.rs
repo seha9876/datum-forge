@@ -1,8 +1,6 @@
-//! Tauri バックエンドのアプリケーション境界です。
+//! Tauri backend application boundary.
 //!
-//! このモジュールは共有データベースハンドルを保持し、フロントエンドから
-//! 呼び出す IPC command を公開します。
-
+//! Holds the shared database handle and exposes IPC commands for the frontend.
 mod database;
 
 use std::{path::Path, process::Command, sync::Mutex};
@@ -33,14 +31,15 @@ use database::{
 };
 use tauri::State;
 
-/// Tauri command handler に注入される共有アプリケーション状態です。
-/// DB 接続は mutex で保護し、各 command が同じ接続を使います。
+/// Shared application state injected into Tauri command handlers.
+///
+/// The DB connection is protected because commands share the same handle.
 struct AppState {
     db: Mutex<Option<Db>>,
 }
 
 fn db_not_ready_error() -> String {
-    "DBセットアップが完了していません。".to_string()
+    "Database setup is not complete.".to_string()
 }
 
 #[tauri::command]
@@ -128,7 +127,7 @@ fn setup_open_database_file(
 fn open_path_folder(path: String) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err("開くフォルダーのパスが空です。".to_string());
+        return Err("Folder path is empty.".to_string());
     }
 
     let target = Path::new(trimmed);
@@ -137,11 +136,11 @@ fn open_path_folder(path: String) -> Result<(), String> {
     } else {
         target
             .parent()
-            .ok_or_else(|| "親フォルダーを取得できません。".to_string())?
+            .ok_or_else(|| "Could not resolve the parent folder.".to_string())?
     };
 
     if !folder.exists() {
-        return Err("対象のフォルダーが見つかりません。".to_string());
+        return Err("Target folder was not found.".to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -155,7 +154,7 @@ fn open_path_folder(path: String) -> Result<(), String> {
 
     result
         .map(|_| ())
-        .map_err(|error| format!("フォルダーを開けませんでした: {error}"))
+        .map_err(|error| format!("Failed to open folder: {error}"))
 }
 
 #[tauri::command]

@@ -2,61 +2,27 @@
 
 import { useAppStore } from "../stores/app";
 
+import {
+  createDefaultOptionRows,
+  createOptionClientKey,
+  fieldTypeLabel,
+  fieldTypes,
+  inputType,
+  isRequiredValueEmpty,
+  normalizeRecordValues as normalizeRecordValuesForForm
+} from "./datumForgeForms";
+
 import type {
   AddColumnPayload,
   AppColumn,
-  FieldType,
   ImportTableCsvMode,
   ImportColumnMappingPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
   SelectOptionGroup,
   SaveRecordPayload,
-  TableRecord,
   UpdateLabelColumnPayload
 } from "../types";
-
-/** フィールド型を画面表示用ラベルへ変換する辞書です。 */
-const fieldTypeLabels: Record<FieldType, string> = {
-  text: "テキスト",
-  integer: "整数",
-  real: "小数",
-  boolean: "真偽値",
-  date: "日付",
-  image: "画像",
-  single_select: "単一選択",
-  reference: "参照"
-};
-
-/**
- * 単一選択グループ作成時に最初から表示する初期選択肢です。
- *
- * @returns 空の選択肢行2件
- */
-const defaultOptionRows = () => [
-  { clientKey: createOptionClientKey(), optionNo: 1, sortOrder: 1, label: "" },
-  { clientKey: createOptionClientKey(), optionNo: 2, sortOrder: 2, label: "" }
-];
-
-let optionClientKeySeed = 0;
-
-/**
- * 選択肢行のクライアント側識別子を採番します。
- *
- * @returns 一意なクライアントキー
- */
-function createOptionClientKey() {
-  optionClientKeySeed += 1;
-  return `option-${optionClientKeySeed}`;
-}
-
-function isRequiredValueEmpty(value: unknown) {
-  return (
-    value === null ||
-    value === undefined ||
-    (typeof value === "string" && value.trim() === "")
-  );
-}
 
 /**
  * Datum Forge 全体で使うフォーム状態と操作関数をまとめて提供します。
@@ -88,7 +54,7 @@ export function useDatumForge() {
   const optionGroupForm = reactive<SaveOptionGroupPayload>({
     name: "",
     description: "",
-    options: defaultOptionRows()
+    options: createDefaultOptionRows()
   });
 
   /** 編集対象として選択中の単一選択グループIDです。新規作成時は null です。 */
@@ -98,18 +64,6 @@ export function useDatumForge() {
   const editingRecordId = ref<number | null>(null);
   /** レコード編集フォームにバインドする値の集合です。 */
   const recordValues = ref<Record<string, unknown>>({});
-
-  /** カラム追加フォームで選択できるフィールド型一覧です。 */
-  const fieldTypes: FieldType[] = [
-    "text",
-    "integer",
-    "real",
-    "boolean",
-    "date",
-    "image",
-    "single_select",
-    "reference"
-  ];
 
   /** サイドバーで選択中のテーブル詳細です。 */
   const selectedTable = computed(() => store.currentTable);
@@ -149,55 +103,13 @@ export function useDatumForge() {
       return;
     }
 
-    recordValues.value = normalizeRecordValues(record);
+    recordValues.value = normalizeRecordValuesForForm(
+      record,
+      store.currentTable?.columns
+        .filter((column) => column.fieldType === "boolean")
+        .map((column) => column.columnName) ?? []
+    );
     editingRecordId.value = recordId;
-  }
-
-  /**
-   * レコード値をフォーム入力向けに正規化します。
-   *
-   * @param record 表示中テーブルのレコード
-   * @returns フォームへバインドできる値オブジェクト
-   */
-  function normalizeRecordValues(record: TableRecord) {
-    const normalized = { ...record.values };
-
-    // チェックボックスへ正しく渡せるよう、真偽値カラムだけ型を明示的にそろえます。
-    for (const column of store.currentTable?.columns ?? []) {
-      if (column.fieldType === "boolean" && column.columnName in normalized) {
-        normalized[column.columnName] = Boolean(normalized[column.columnName]);
-      }
-    }
-
-    return normalized;
-  }
-
-  /**
-   * フィールド種別に応じた HTML input type を返します。
-   *
-   * @param fieldType カラムの型
-   * @returns input 要素へ設定する type 値
-   */
-  function inputType(fieldType: FieldType) {
-    if (fieldType === "integer" || fieldType === "real") {
-      return "number";
-    }
-
-    if (fieldType === "date") {
-      return "date";
-    }
-
-    return "text";
-  }
-
-  /**
-   * フィールド種別の表示用ラベルを返します。
-   *
-   * @param fieldType カラムの型
-   * @returns 画面表示用ラベル
-   */
-  function fieldTypeLabel(fieldType: FieldType) {
-    return fieldTypeLabels[fieldType];
   }
 
   /**
@@ -397,7 +309,7 @@ export function useDatumForge() {
       id: undefined,
       name: "",
       description: "",
-      options: defaultOptionRows()
+      options: createDefaultOptionRows()
     } satisfies SaveOptionGroupPayload);
   }
 
@@ -421,7 +333,7 @@ export function useDatumForge() {
               sortOrder: option.sortOrder,
               label: option.label
             }))
-          : defaultOptionRows()
+          : createDefaultOptionRows()
     } satisfies SaveOptionGroupPayload);
     syncOptionOrdering();
   }
