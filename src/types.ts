@@ -410,6 +410,19 @@ export interface AppBootstrap {
 export interface AppSettings {
   dbPath: string;
   showRecordIdsInNavigation: boolean;
+  notificationSettings: NotificationSettings;
+}
+
+export interface NotificationSettings {
+  usePerKindDurations: boolean;
+  commonDurationSeconds: number;
+  successDurationSeconds: number;
+  warningDurationSeconds: number;
+  errorDurationSeconds: number;
+}
+
+export interface UpdateNotificationSettingsPayload {
+  notificationSettings: NotificationSettings;
 }
 
 export type StartupDbState = "ready" | "firstLaunch" | "missingDb" | "error";
@@ -435,6 +448,33 @@ export interface CreateTablePayload {
 
 export interface DeleteTablePayload {
   tableId: number;
+}
+
+export interface ExportTableCsvPayload {
+  tableId: number;
+  outputPath: string;
+}
+
+export type ImportTableCsvMode =
+  | "skipExistingPrimaryKeys"
+  | "appendIgnoringPrimaryKeys"
+  | "upsertByPrimaryKey";
+
+export interface ImportTableCsvPayload {
+  tableId: number;
+  inputPath: string;
+  mode: ImportTableCsvMode;
+}
+
+export type ImportTableCsvStatus = "success" | "warning";
+
+export interface ImportTableCsvResult {
+  status: ImportTableCsvStatus;
+  insertedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  details: string[];
 }
 
 export interface AddColumnPayload {

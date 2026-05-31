@@ -11,6 +11,8 @@ import type {
   DeleteColumnPayload,
   DeleteRecordPayload,
   DeleteTablePayload,
+  ExportTableCsvPayload,
+  ImportTableCsvPayload,
   ReorderColumnsPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
@@ -18,6 +20,7 @@ import type {
   StartupDbStatus,
   TableDetail,
   UpdateLabelColumnPayload,
+  UpdateNotificationSettingsPayload,
   UpdateColumnPayload
 } from "../types";
 
@@ -108,6 +111,30 @@ export const useAppStore = defineStore("app", {
         }
         this.references = {};
         await this.initialize();
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    async exportTableCsv(payload: ExportTableCsvPayload) {
+      this.error = "";
+      try {
+        await api.exportTableCsv(payload);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    },
+    /**
+     * CSVを取り込んだ後、サイドバーと一覧の表示を最新状態へ戻します。
+     */
+    async importTableCsv(payload: ImportTableCsvPayload) {
+      this.error = "";
+      try {
+        const result = await api.importTableCsv(payload);
+        await this.initialize();
+        await this.loadTable(payload.tableId);
+        return result;
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error;
@@ -205,6 +232,20 @@ export const useAppStore = defineStore("app", {
       this.error = "";
       try {
         this.settings = await api.updateRecordIdVisibility(show);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async updateNotificationSettings(
+      payload: UpdateNotificationSettingsPayload
+    ) {
+      this.loading = true;
+      this.error = "";
+      try {
+        this.settings = await api.updateNotificationSettings(payload);
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error;

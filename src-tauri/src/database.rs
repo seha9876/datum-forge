@@ -7,7 +7,7 @@ use rusqlite::{params, params_from_iter, types::ValueRef, Connection, OptionalEx
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
 };
@@ -19,6 +19,8 @@ pub enum DbError {
     Sql(#[from] rusqlite::Error),
     #[error("filesystem error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("csv error: {0}")]
+    Csv(#[from] csv::Error),
     #[error("invalid input: {0}")]
     InvalidInput(String),
 }
@@ -29,6 +31,23 @@ struct AppSettingsFile {
     db_path: PathBuf,
     #[serde(default)]
     show_record_ids_in_navigation: Option<bool>,
+    #[serde(default)]
+    notification_settings: Option<NotificationSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    #[serde(default)]
+    pub use_per_kind_durations: bool,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub common_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub success_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub warning_duration_seconds: i64,
+    #[serde(default = "default_notification_duration_seconds")]
+    pub error_duration_seconds: i64,
 }
 
 /// Frontend settings payload for the database location.
@@ -37,6 +56,13 @@ struct AppSettingsFile {
 pub struct AppSettings {
     pub db_path: String,
     pub show_record_ids_in_navigation: bool,
+    pub notification_settings: NotificationSettings,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNotificationSettingsPayload {
+    pub notification_settings: NotificationSettings,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,7 +100,7 @@ pub struct AppTableSummary {
     pub sort_order: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppColumn {
     pub id: i64,
@@ -289,6 +315,54 @@ pub struct CreateTablePayload {
 #[serde(rename_all = "camelCase")]
 pub struct DeleteTablePayload {
     pub table_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportTableCsvPayload {
+    /// CSVを書き出す対象テーブルのIDです。
+    pub table_id: i64,
+    /// 保存ダイアログで選ばれた出力先パスです。
+    pub output_path: String,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportTableCsvMode {
+    /// CSV内のIDが既存レコードと重複しない行だけ追加します。
+    SkipExistingPrimaryKeys,
+    /// CSV内のIDを使わず、SQLiteの自動採番で全行を追加します。
+    AppendIgnoringPrimaryKeys,
+    /// CSV内のIDが既存なら更新し、なければそのIDで追加します。
+    UpsertByPrimaryKey,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportTableCsvPayload {
+    /// CSVを取り込む対象テーブルのIDです。
+    pub table_id: i64,
+    /// ファイル選択ダイアログで選ばれたCSVパスです。
+    pub input_path: String,
+    /// ID重複時の扱いを決めるインポート方式です。
+    pub mode: ImportTableCsvMode,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportTableCsvResult {
+    /// フロント側の通知色を決めるための最終結果です。
+    pub status: String,
+    /// CSVから新しく追加できた行数です。
+    pub inserted_count: usize,
+    /// 既存IDに対して更新できた行数です。
+    pub updated_count: usize,
+    /// 既存IDと重複したため取り込まなかった行数です。
+    pub skipped_count: usize,
+    /// 現在はall-or-nothingなので、成功時は常に0です。
+    pub error_count: usize,
+    /// 警告や詳細確認に使う補足メッセージです。
+    pub details: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -677,19 +751,26 @@ fn save_settings(db_path: &Path) -> Result<(), DbError> {
         .ok()
         .and_then(|settings| settings.show_record_ids_in_navigation)
         .unwrap_or(true);
+    let notification_settings = notification_settings_setting();
 
-    save_settings_with_display_settings(db_path, show_record_ids_in_navigation)
+    save_settings_with_app_settings(
+        db_path,
+        show_record_ids_in_navigation,
+        notification_settings,
+    )
 }
 
-fn save_settings_with_display_settings(
+fn save_settings_with_app_settings(
     db_path: &Path,
     show_record_ids_in_navigation: bool,
+    notification_settings: NotificationSettings,
 ) -> Result<(), DbError> {
     let path = settings_path()?;
     ensure_parent_dir(&path)?;
     let settings = AppSettingsFile {
         db_path: db_path.to_path_buf(),
         show_record_ids_in_navigation: Some(show_record_ids_in_navigation),
+        notification_settings: Some(normalize_notification_settings(notification_settings)),
     };
     let text = serde_json::to_string_pretty(&settings)
         .map_err(|e| DbError::InvalidInput(format!("settings file cannot be written: {e}")))?;
@@ -702,6 +783,50 @@ fn show_record_ids_in_navigation_setting() -> bool {
         .ok()
         .and_then(|settings| settings.show_record_ids_in_navigation)
         .unwrap_or(true)
+}
+
+fn default_notification_duration_seconds() -> i64 {
+    4
+}
+
+fn default_notification_settings() -> NotificationSettings {
+    NotificationSettings {
+        use_per_kind_durations: false,
+        common_duration_seconds: default_notification_duration_seconds(),
+        success_duration_seconds: default_notification_duration_seconds(),
+        warning_duration_seconds: default_notification_duration_seconds(),
+        error_duration_seconds: default_notification_duration_seconds(),
+    }
+}
+
+fn normalize_notification_duration_seconds(value: i64) -> i64 {
+    value.clamp(0, 60)
+}
+
+fn normalize_notification_settings(settings: NotificationSettings) -> NotificationSettings {
+    NotificationSettings {
+        use_per_kind_durations: settings.use_per_kind_durations,
+        common_duration_seconds: normalize_notification_duration_seconds(
+            settings.common_duration_seconds,
+        ),
+        success_duration_seconds: normalize_notification_duration_seconds(
+            settings.success_duration_seconds,
+        ),
+        warning_duration_seconds: normalize_notification_duration_seconds(
+            settings.warning_duration_seconds,
+        ),
+        error_duration_seconds: normalize_notification_duration_seconds(
+            settings.error_duration_seconds,
+        ),
+    }
+}
+
+fn notification_settings_setting() -> NotificationSettings {
+    load_settings()
+        .ok()
+        .and_then(|settings| settings.notification_settings)
+        .map(normalize_notification_settings)
+        .unwrap_or_else(default_notification_settings)
 }
 
 fn db_file_stem(path: &Path) -> String {
@@ -920,11 +1045,24 @@ impl Db {
         AppSettings {
             db_path: self.db_path.to_string_lossy().into_owned(),
             show_record_ids_in_navigation: show_record_ids_in_navigation_setting(),
+            notification_settings: notification_settings_setting(),
         }
     }
 
     pub fn update_record_id_visibility(&mut self, show: bool) -> Result<AppSettings, DbError> {
-        save_settings_with_display_settings(&self.db_path, show)?;
+        save_settings_with_app_settings(&self.db_path, show, notification_settings_setting())?;
+        Ok(self.settings())
+    }
+
+    pub fn update_notification_settings(
+        &mut self,
+        payload: UpdateNotificationSettingsPayload,
+    ) -> Result<AppSettings, DbError> {
+        save_settings_with_app_settings(
+            &self.db_path,
+            show_record_ids_in_navigation_setting(),
+            payload.notification_settings,
+        )?;
         Ok(self.settings())
     }
 
@@ -1699,6 +1837,130 @@ impl Db {
             table,
             columns,
             records,
+        })
+    }
+
+    pub fn export_table_csv(&self, payload: ExportTableCsvPayload) -> Result<(), DbError> {
+        let output_path = payload.output_path.trim();
+        if output_path.is_empty() {
+            return Err(DbError::InvalidInput("outputPath is required".into()));
+        }
+
+        // 画面表示と同じ文字列をCSVに出すため、表示値付きのレコード一覧を使います。
+        let table = self.get_table_summary(payload.table_id)?;
+        let columns = self.list_columns(payload.table_id)?;
+        let records = self.list_records_with_order(&table.table_name, &columns, "ASC")?;
+        // Excelで日本語を開きやすいよう、UTF-8 BOMを先頭に付けます。
+        let mut csv = String::from("\u{feff}");
+        csv.push_str(
+            &columns
+                .iter()
+                .map(|column| csv_escape_field(&column.display_name))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push_str("\r\n");
+
+        for record in &records {
+            let row = columns
+                .iter()
+                .map(|column| {
+                    record
+                        .display_values
+                        .as_object()
+                        .and_then(|values| values.get(&column.column_name))
+                        .and_then(Value::as_str)
+                        .map(csv_escape_field)
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            csv.push_str(&row);
+            csv.push_str("\r\n");
+        }
+
+        fs::write(output_path, csv)?;
+        Ok(())
+    }
+
+    pub fn import_table_csv(
+        &mut self,
+        payload: ImportTableCsvPayload,
+    ) -> Result<ImportTableCsvResult, DbError> {
+        let input_path = payload.input_path.trim();
+        if input_path.is_empty() {
+            return Err(DbError::InvalidInput("inputPath is required".into()));
+        }
+
+        let table = self.get_table_summary(payload.table_id)?;
+        let columns = self.list_columns(payload.table_id)?;
+        let mut reader = csv::ReaderBuilder::new().from_path(input_path)?;
+        // CSVヘッダーをDBカラムへ対応付けます。ここで列数・物理名/論理名の一致を検証します。
+        let header_columns = resolve_csv_headers(reader.headers()?, &columns)?;
+        // 単一選択はCSV上のラベルから保存用のoption_noへ戻す必要があるため、先に辞書化します。
+        let select_option_maps = self.csv_select_option_maps(&columns)?;
+
+        // インポートは途中失敗時に中途半端な行を残さないよう、全行を1トランザクションで処理します。
+        let tx = self.conn.transaction()?;
+        let mut inserted_count = 0;
+        let mut updated_count = 0;
+        let mut skipped_count = 0;
+        let mut details = Vec::new();
+
+        for (row_index, record) in reader.records().enumerate() {
+            let record = record?;
+            // csv crateのrow_indexはデータ行の0始まりです。人が見て分かるようヘッダー分を足します。
+            let row_number = row_index + 2;
+            let values =
+                csv_record_to_values(&record, &header_columns, &select_option_maps, row_number)?;
+
+            match payload.mode {
+                ImportTableCsvMode::SkipExistingPrimaryKeys => {
+                    // 既存IDは触らず、CSVにしかないIDの行だけ追加します。
+                    let id = csv_row_id(&values, row_number)?;
+                    if csv_record_exists(&tx, &table.table_name, id)? {
+                        skipped_count += 1;
+                        continue;
+                    }
+                    csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                    inserted_count += 1;
+                }
+                ImportTableCsvMode::AppendIgnoringPrimaryKeys => {
+                    // CSVのIDを無視し、DB側に新しいIDを採番させて全行を追加します。
+                    csv_insert_record(&tx, &table.table_name, &columns, &values, false)?;
+                    inserted_count += 1;
+                }
+                ImportTableCsvMode::UpsertByPrimaryKey => {
+                    // 同じIDがあれば更新、なければCSVのIDを維持して追加します。
+                    let id = csv_row_id(&values, row_number)?;
+                    if csv_record_exists(&tx, &table.table_name, id)? {
+                        csv_update_record(&tx, &table.table_name, &columns, &values, id)?;
+                        updated_count += 1;
+                    } else {
+                        csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                        inserted_count += 1;
+                    }
+                }
+            }
+        }
+        tx.commit()?;
+        if skipped_count > 0 {
+            details.push(format!(
+                "{skipped_count}件は既存IDと重複したためスキップしました。"
+            ));
+        }
+
+        Ok(ImportTableCsvResult {
+            status: if skipped_count > 0 {
+                "warning".into()
+            } else {
+                "success".into()
+            },
+            inserted_count,
+            updated_count,
+            skipped_count,
+            error_count: 0,
+            details,
         })
     }
 
@@ -3159,14 +3421,24 @@ impl Db {
         table_name: &str,
         columns: &[AppColumn],
     ) -> Result<Vec<TableRecord>, DbError> {
+        self.list_records_with_order(table_name, columns, "ASC")
+    }
+
+    fn list_records_with_order(
+        &self,
+        table_name: &str,
+        columns: &[AppColumn],
+        id_order: &str,
+    ) -> Result<Vec<TableRecord>, DbError> {
         let selected_columns = columns
             .iter()
             .map(|column| format!("\"{}\"", column.column_name))
             .collect::<Vec<_>>();
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT {} FROM \"{}\" ORDER BY id DESC",
+            "SELECT {} FROM \"{}\" ORDER BY id {}",
             selected_columns.join(", "),
-            table_name
+            table_name,
+            id_order
         ))?;
         let mut rows = stmt.query([])?;
         let mut records = Vec::new();
@@ -3251,6 +3523,40 @@ impl Db {
                 _ => value.to_string(),
             }),
         }
+    }
+
+    fn csv_select_option_maps(
+        &self,
+        columns: &[AppColumn],
+    ) -> Result<HashMap<String, HashMap<String, i64>>, DbError> {
+        let mut maps = HashMap::new();
+        // CSVには選択肢ラベルが入ることがあるため、ラベル/番号の両方からoption_noを引けるようにします。
+        for column in columns
+            .iter()
+            .filter(|column| column.field_type == "single_select")
+        {
+            let group_id = column.select_option_group_id.ok_or_else(|| {
+                DbError::InvalidInput(format!(
+                    "{} is single_select but option group is missing",
+                    column.display_name
+                ))
+            })?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT option_no, label FROM select_options WHERE group_id = ?")?;
+            let options = stmt.query_map([group_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })?;
+
+            let mut option_map = HashMap::new();
+            for option in options {
+                let (option_no, label) = option?;
+                option_map.insert(option_no.to_string(), option_no);
+                option_map.insert(label, option_no);
+            }
+            maps.insert(column.column_name.clone(), option_map);
+        }
+        Ok(maps)
     }
 
     fn table_name_by_id(&self, table_id: i64) -> Result<String, DbError> {
@@ -4405,6 +4711,233 @@ fn to_sql_value(value: Option<&Value>, field_type: &str) -> Box<dyn ToSql> {
         }
         _ => Box::new(value.and_then(Value::as_str).map(|item| item.to_string()) as Option<String>),
     }
+}
+
+fn csv_escape_field(value: &str) -> String {
+    // CSVの特殊文字を含む値だけダブルクォートで包み、内部のクォートは2つにします。
+    if value.contains(|ch| matches!(ch, ',' | '"' | '\r' | '\n')) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// CSVヘッダーをテーブルカラムへ変換します。
+/// 物理名または論理名の完全一致だけを許可し、曖昧な列はここで弾きます。
+fn resolve_csv_headers(
+    headers: &csv::StringRecord,
+    columns: &[AppColumn],
+) -> Result<Vec<AppColumn>, DbError> {
+    if headers.len() != columns.len() {
+        return Err(DbError::InvalidInput(format!(
+            "CSV header count must match table columns: expected {}, got {}",
+            columns.len(),
+            headers.len()
+        )));
+    }
+
+    let mut resolved = Vec::with_capacity(headers.len());
+    let mut used_column_ids = HashSet::new();
+    for header in headers.iter() {
+        let matches = columns
+            .iter()
+            .filter(|column| column.column_name == header || column.display_name == header)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(DbError::InvalidInput(format!(
+                "CSV header `{}` does not uniquely match a table column",
+                header
+            )));
+        }
+
+        let column = matches[0];
+        if !used_column_ids.insert(column.id) {
+            return Err(DbError::InvalidInput(format!(
+                "CSV column `{}` is mapped more than once",
+                column.display_name
+            )));
+        }
+        resolved.push(column.clone());
+    }
+
+    if !resolved.iter().any(|column| column.column_name == "id") {
+        return Err(DbError::InvalidInput("CSV header must include id".into()));
+    }
+    Ok(resolved)
+}
+
+fn csv_record_to_values(
+    record: &csv::StringRecord,
+    header_columns: &[AppColumn],
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+    row_number: usize,
+) -> Result<HashMap<String, Value>, DbError> {
+    let mut values = HashMap::new();
+    for (index, column) in header_columns.iter().enumerate() {
+        let raw = record.get(index).unwrap_or_default();
+        // CSVはすべて文字列なので、DB保存前にカラム型に合わせたJSON値へ変換します。
+        let value = csv_cell_to_value(column, raw, select_option_maps, row_number)?;
+        if column.column_name != "id" && column.is_required && is_required_value_empty(Some(&value))
+        {
+            return Err(DbError::InvalidInput(format!(
+                "row {}: {} is required",
+                row_number, column.display_name
+            )));
+        }
+        values.insert(column.column_name.clone(), value);
+    }
+    Ok(values)
+}
+
+fn csv_cell_to_value(
+    column: &AppColumn,
+    raw: &str,
+    select_option_maps: &HashMap<String, HashMap<String, i64>>,
+    row_number: usize,
+) -> Result<Value, DbError> {
+    let text = raw.trim();
+    if text.is_empty() {
+        // 空セルは未入力として扱い、必須チェックは呼び出し元で行います。
+        return Ok(Value::Null);
+    }
+
+    match column.field_type.as_str() {
+        "integer" | "date" => text.parse::<i64>().map(Value::from).map_err(|_| {
+            DbError::InvalidInput(format!(
+                "row {}: {} must be an integer",
+                row_number, column.display_name
+            ))
+        }),
+        "real" => text.parse::<f64>().map(Value::from).map_err(|_| {
+            DbError::InvalidInput(format!(
+                "row {}: {} must be a number",
+                row_number, column.display_name
+            ))
+        }),
+        "boolean" => match text {
+            "true" | "1" => Ok(Value::from(true)),
+            "false" | "0" => Ok(Value::from(false)),
+            _ => Err(DbError::InvalidInput(format!(
+                "row {}: {} must be true, false, 1, or 0",
+                row_number, column.display_name
+            ))),
+        },
+        "single_select" => {
+            let option_no = select_option_maps
+                .get(&column.column_name)
+                .and_then(|options| options.get(text))
+                .copied()
+                .ok_or_else(|| {
+                    DbError::InvalidInput(format!(
+                        "row {}: {} does not match an option",
+                        row_number, column.display_name
+                    ))
+                })?;
+            Ok(Value::from(option_no))
+        }
+        "reference" => {
+            // エクスポート値は「ID:表示名」なので、コロンより前のIDだけ取り出します。
+            let id_text = text.split_once(':').map(|(id, _)| id).unwrap_or(text);
+            id_text.trim().parse::<i64>().map(Value::from).map_err(|_| {
+                DbError::InvalidInput(format!(
+                    "row {}: {} must be a reference id",
+                    row_number, column.display_name
+                ))
+            })
+        }
+        _ => Ok(Value::String(raw.to_string())),
+    }
+}
+
+fn csv_row_id(values: &HashMap<String, Value>, row_number: usize) -> Result<i64, DbError> {
+    // IDを使う方式では、CSV行のidが空または数値以外なら処理できません。
+    values
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| DbError::InvalidInput(format!("row {}: id is required", row_number)))
+}
+
+fn csv_record_exists(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    id: i64,
+) -> Result<bool, DbError> {
+    // 重複判定だけなので、存在すれば1行返す軽いSELECTにしています。
+    conn.query_row(
+        &format!("SELECT 1 FROM \"{}\" WHERE id = ?", table_name),
+        [id],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|value| value.is_some())
+    .map_err(DbError::from)
+}
+
+fn csv_insert_record(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    columns: &[AppColumn],
+    values: &HashMap<String, Value>,
+    include_id: bool,
+) -> Result<(), DbError> {
+    // include_id=false のときはid列をINSERT対象から外し、SQLiteに自動採番させます。
+    let target_columns = columns
+        .iter()
+        .filter(|column| include_id || column.column_name != "id")
+        .collect::<Vec<_>>();
+    let column_names = target_columns
+        .iter()
+        .map(|column| format!("\"{}\"", column.column_name))
+        .collect::<Vec<_>>();
+    let placeholders = std::iter::repeat("?")
+        .take(target_columns.len())
+        .collect::<Vec<_>>();
+    let sql_values = target_columns
+        .iter()
+        .map(|column| to_sql_value(values.get(&column.column_name), &column.field_type))
+        .collect::<Vec<_>>();
+    conn.execute(
+        &format!(
+            "INSERT INTO \"{}\" ({}) VALUES ({})",
+            table_name,
+            column_names.join(", "),
+            placeholders.join(", ")
+        ),
+        params_from_iter(sql_values.iter().map(|value| value.as_ref())),
+    )?;
+    Ok(())
+}
+
+fn csv_update_record(
+    conn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    columns: &[AppColumn],
+    values: &HashMap<String, Value>,
+    id: i64,
+) -> Result<(), DbError> {
+    // 置き換え方式でもidは変更せず、非IDカラムだけをCSV内容で更新します。
+    let target_columns = columns
+        .iter()
+        .filter(|column| column.column_name != "id")
+        .collect::<Vec<_>>();
+    let assignments = target_columns
+        .iter()
+        .map(|column| format!("\"{}\" = ?", column.column_name))
+        .collect::<Vec<_>>();
+    let mut sql_values = target_columns
+        .iter()
+        .map(|column| to_sql_value(values.get(&column.column_name), &column.field_type))
+        .collect::<Vec<_>>();
+    sql_values.push(Box::new(id));
+    conn.execute(
+        &format!(
+            "UPDATE \"{}\" SET {} WHERE id = ?",
+            table_name,
+            assignments.join(", ")
+        ),
+        params_from_iter(sql_values.iter().map(|value| value.as_ref())),
+    )?;
+    Ok(())
 }
 
 fn sqlite_value_to_json(value: ValueRef<'_>) -> Result<Value, rusqlite::Error> {

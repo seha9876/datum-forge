@@ -13,10 +13,10 @@ use database::{
     AttachRecordTagPayload, ClearViewLayoutRecordTemplatePayload, CreateAndAttachRecordTagPayload,
     CreateDatabasePayload, CreateTablePayload, CreateViewLayoutTemplatePayload,
     CreateViewNavFolderPayload, Db, DeleteColumnPayload, DeleteRecordPayload,
-    DeleteRecordTagPayload, DeleteTablePayload,
-    DeleteViewLayoutTemplatePayload, DeleteViewNavFolderPayload, DetachRecordTagPayload,
-    DuplicateViewLayoutTemplatePayload, FolderViewLayoutTemplates,
-    GetResolvedViewFieldLayoutPayload, GetViewLayoutTemplateCardsPayload,
+    DeleteRecordTagPayload, DeleteTablePayload, DeleteViewLayoutTemplatePayload,
+    DeleteViewNavFolderPayload, DetachRecordTagPayload, DuplicateViewLayoutTemplatePayload,
+    ExportTableCsvPayload, FolderViewLayoutTemplates, GetResolvedViewFieldLayoutPayload,
+    GetViewLayoutTemplateCardsPayload, ImportTableCsvPayload, ImportTableCsvResult,
     ListViewLayoutCardColumnBindingsPayload, ListViewLayoutTemplatesForFolderPayload, RecordTag,
     RecordTagBundle, RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice,
     RemoveViewNavFolderRecordPayload, RenameViewLayoutTemplatePayload, ReorderColumnsPayload,
@@ -25,8 +25,8 @@ use database::{
     SaveRecordPayload, SaveRecordTagGroupPayload, SaveRecordTagPayload,
     SaveViewLayoutCardColumnBindingsPayload, SaveViewLayoutCardOverridesPayload,
     SaveViewLayoutTemplateCardsPayload, StartupDbStatus, TableDetail, UpdateColumnPayload,
-    UpdateLabelColumnPayload, ViewLayoutCardColumnBinding, ViewLayoutTemplate,
-    ViewLayoutTemplateCard, ViewNavFolderRecord, ViewNavNode, ViewTableSection,
+    UpdateLabelColumnPayload, UpdateNotificationSettingsPayload, ViewLayoutCardColumnBinding,
+    ViewLayoutTemplate, ViewLayoutTemplateCard, ViewNavFolderRecord, ViewNavNode, ViewTableSection,
 };
 use tauri::State;
 
@@ -81,6 +81,21 @@ fn update_record_id_visibility(
         .as_mut()
         .ok_or_else(db_not_ready_error)?
         .update_record_id_visibility(show)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_notification_settings(
+    state: State<'_, AppState>,
+    payload: UpdateNotificationSettingsPayload,
+) -> Result<AppSettings, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_mut()
+        .ok_or_else(db_not_ready_error)?
+        .update_notification_settings(payload)
         .map_err(|e| e.to_string())
 }
 
@@ -203,6 +218,36 @@ fn delete_table(state: State<'_, AppState>, payload: DeleteTablePayload) -> Resu
         .as_ref()
         .ok_or_else(db_not_ready_error)?
         .delete_table(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn export_table_csv(
+    state: State<'_, AppState>,
+    payload: ExportTableCsvPayload,
+) -> Result<(), String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or_else(db_not_ready_error)?
+        .export_table_csv(payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_table_csv(
+    state: State<'_, AppState>,
+    payload: ImportTableCsvPayload,
+) -> Result<ImportTableCsvResult, String> {
+    state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_mut()
+        .ok_or_else(db_not_ready_error)?
+        .import_table_csv(payload)
         .map_err(|e| e.to_string())
 }
 
@@ -870,6 +915,7 @@ pub fn run() {
             bootstrap_app,
             get_app_settings,
             update_record_id_visibility,
+            update_notification_settings,
             create_database_file,
             setup_open_database_file,
             open_path_folder,
@@ -878,6 +924,8 @@ pub fn run() {
             open_database_file,
             create_table,
             delete_table,
+            export_table_csv,
+            import_table_csv,
             add_column,
             delete_column,
             update_column,

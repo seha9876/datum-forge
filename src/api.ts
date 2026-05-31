@@ -21,9 +21,12 @@ import type {
   DeleteViewNavFolderPayload,
   DetachRecordTagPayload,
   DuplicateViewLayoutTemplatePayload,
+  ExportTableCsvPayload,
   FolderViewLayoutTemplates,
   GetViewLayoutTemplateCardsPayload,
   GetResolvedViewFieldLayoutPayload,
+  ImportTableCsvPayload,
+  ImportTableCsvResult,
   ListViewLayoutCardColumnBindingsPayload,
   ListViewLayoutTemplatesForFolderPayload,
   ReferenceChoice,
@@ -49,6 +52,7 @@ import type {
   TableDetail,
   CreateViewNavFolderPayload,
   UpdateLabelColumnPayload,
+  UpdateNotificationSettingsPayload,
   UpdateColumnPayload,
   ViewLayoutTemplate,
   ViewLayoutCardColumnBinding,
@@ -70,6 +74,8 @@ export const api = {
   getAppSettings: () => invoke<AppSettings>("get_app_settings"),
   updateRecordIdVisibility: (show: boolean) =>
     invoke<AppSettings>("update_record_id_visibility", { show }),
+  updateNotificationSettings: (payload: UpdateNotificationSettingsPayload) =>
+    invoke<AppSettings>("update_notification_settings", { payload }),
   createDatabaseFile: (payload: CreateDatabasePayload) =>
     invoke<AppSettings>("create_database_file", { payload }),
   setupOpenDatabaseFile: (dbFile: string) =>
@@ -99,6 +105,12 @@ export const api = {
     invoke<number>("create_table", { payload }),
   deleteTable: (payload: DeleteTablePayload) =>
     invoke<void>("delete_table", { payload }),
+  /** 指定テーブルの表示値をCSVとして保存します。 */
+  exportTableCsv: (payload: ExportTableCsvPayload) =>
+    invoke<void>("export_table_csv", { payload }),
+  /** 選択されたCSVを指定方式で対象テーブルへ取り込みます。 */
+  importTableCsv: (payload: ImportTableCsvPayload) =>
+    invoke<ImportTableCsvResult>("import_table_csv", { payload }),
   /**
    * テーブルに新しいカラムを追加します。
    *
