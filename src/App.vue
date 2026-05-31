@@ -52,12 +52,15 @@ const {
   fieldTypes,
   fieldTypeLabel,
   fieldTypeMeta,
+  importExcelTable,
   importTableCsv,
+  inspectExcelTables,
   inputType,
   optionGroupForm,
   recordValues,
   referenceChoices,
   reorderColumns,
+  previewExcelTableImport,
   removeOptionRow,
   resetOptionGroupForm,
   resetRecordForm,
@@ -559,9 +562,12 @@ onMounted(() => {
             :selected-table-id="store.selectedTableId"
             :on-delete-table="deleteTable"
             :on-export-table-csv="exportTableCsv"
+            :on-import-excel-table="importExcelTable"
             :on-import-table-csv="importTableCsv"
+            :on-inspect-excel-tables="inspectExcelTables"
             :on-load-table="store.loadTable"
             :on-open-create-dialog="openTableDialog"
+            :on-preview-excel-table-import="previewExcelTableImport"
           />
         </div>
         <v-tooltip text="左サイドバーの幅を調整" location="right">

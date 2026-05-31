@@ -7,6 +7,7 @@ import type {
   AppColumn,
   FieldType,
   ImportTableCsvMode,
+  ExcelColumnMappingPayload,
   ReferenceChoice,
   SaveOptionGroupPayload,
   SelectOptionGroup,
@@ -512,6 +513,44 @@ export function useDatumForge() {
     return result;
   }
 
+  async function inspectExcelTables(tableId: number, inputPath: string) {
+    return await store.inspectExcelTables({ tableId, inputPath });
+  }
+
+  async function previewExcelTableImport(
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) {
+    return await store.previewExcelTableImport({
+      tableId,
+      inputPath,
+      excelTableName,
+      mode,
+      columnMapping
+    });
+  }
+
+  async function importExcelTable(
+    tableId: number,
+    inputPath: string,
+    excelTableName: string,
+    mode: ImportTableCsvMode,
+    columnMapping: ExcelColumnMappingPayload[]
+  ) {
+    const result = await store.importExcelTable({
+      tableId,
+      inputPath,
+      excelTableName,
+      mode,
+      columnMapping
+    });
+    resetRecordForm();
+    return result;
+  }
+
   onMounted(() => {
     // 初回表示時に必要な初期データを読み込みます。
     void store.initialize();
@@ -524,6 +563,9 @@ export function useDatumForge() {
     deleteRecord,
     deleteTable,
     exportTableCsv,
+    inspectExcelTables,
+    previewExcelTableImport,
+    importExcelTable,
     importTableCsv,
     editingRecordId,
     fieldTypes,

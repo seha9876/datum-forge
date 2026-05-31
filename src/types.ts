@@ -411,6 +411,7 @@ export interface AppSettings {
   dbPath: string;
   showRecordIdsInNavigation: boolean;
   notificationSettings: NotificationSettings;
+  lastExcelImportTables: Record<number, string>;
 }
 
 export interface NotificationSettings {
@@ -475,6 +476,69 @@ export interface ImportTableCsvResult {
   skippedCount: number;
   errorCount: number;
   details: string[];
+}
+
+export interface InspectExcelTablesPayload {
+  tableId: number;
+  inputPath: string;
+}
+
+export interface ExcelColumnMappingPayload {
+  targetColumnName: string;
+  sourceColumnName: string;
+}
+
+export interface PreviewExcelTableImportPayload {
+  tableId: number;
+  inputPath: string;
+  excelTableName: string;
+  mode: ImportTableCsvMode;
+  columnMapping: ExcelColumnMappingPayload[];
+}
+
+export interface ImportExcelTablePayload {
+  tableId: number;
+  inputPath: string;
+  excelTableName: string;
+  mode: ImportTableCsvMode;
+  columnMapping: ExcelColumnMappingPayload[];
+}
+
+export interface ExcelTableInfo {
+  name: string;
+  displayName: string;
+  sheetName: string;
+  range: string;
+  columnNames: string[];
+  rowCount: number;
+}
+
+export interface InspectExcelTablesResult {
+  tables: ExcelTableInfo[];
+  suggestedTableName: string | null;
+  lastUsedTableName: string | null;
+}
+
+export interface ExcelColumnMappingSuggestion {
+  targetColumnName: string;
+  targetDisplayName: string;
+  sourceColumnName: string | null;
+  matchedBy: string | null;
+  isRequired: boolean;
+}
+
+export interface PreviewExcelTableImportResult {
+  excelTable: ExcelTableInfo;
+  columnMappings: ExcelColumnMappingSuggestion[];
+  previewRows: Array<Record<string, string>>;
+  totalRows: number;
+  insertedCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  warnings: string[];
+  errors: string[];
 }
 
 export interface AddColumnPayload {
