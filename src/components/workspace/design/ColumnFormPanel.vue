@@ -39,6 +39,16 @@ function requiredRule(label: string): ValidationRule {
     isRequiredValueEmpty(value) ? `${label} は必須です` : true;
 }
 
+function physicalNameRule(value: unknown) {
+  if (typeof value !== "string") {
+    return "物理名は文字列で入力してください";
+  }
+
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(value)
+    ? true
+    : "半角英字で始め、英数字と _ のみ使用できます";
+}
+
 async function handleSubmitColumn() {
   const validation = await formRef.value?.validate();
   if (!validation?.valid) {
@@ -60,11 +70,13 @@ async function handleSubmitColumn() {
     <!-- 追加するカラムの基本情報を入力するフォームです。 -->
     <v-text-field
       v-model="props.columnForm.columnName"
-      label="カラム名"
+      label="物理名"
       placeholder="name"
       variant="outlined"
       density="comfortable"
-      :rules="[requiredRule('カラム名')]"
+      hint="半角英字で始め、英数字と _ のみ使用できます"
+      persistent-hint
+      :rules="[requiredRule('物理名'), physicalNameRule]"
       hide-details="auto"
       class="mb-4"
     />

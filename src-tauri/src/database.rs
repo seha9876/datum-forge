@@ -1584,7 +1584,11 @@ impl Db {
         }
 
         let table_name = self.table_name_by_id(payload.table_id)?;
-        self.conn.execute(
+        let sort_order = self.next_sort_order("app_table_columns", Some(payload.table_id))?;
+        let current_label_column_name = self.label_column_name(payload.table_id)?;
+        let tx = self.conn.unchecked_transaction()?;
+        // 物理列の追加とメタ情報登録をまとめ、途中失敗時に実テーブルだけ変わる状態を避けます。
+        tx.execute(
             &format!(
                 "ALTER TABLE \"{}\" ADD COLUMN \"{}\" {}",
                 table_name,
@@ -1594,8 +1598,7 @@ impl Db {
             [],
         )?;
 
-        let sort_order = self.next_sort_order("app_table_columns", Some(payload.table_id))?;
-        self.conn.execute(
+        tx.execute(
             "
             INSERT INTO app_table_columns (
               table_id, column_name, display_name, field_type, sort_order,
@@ -1614,14 +1617,14 @@ impl Db {
             ],
         )?;
 
-        let current_label_column_name = self.label_column_name(payload.table_id)?;
         if current_label_column_name == "id" && payload.column_name != "id" {
-            let new_column_id = self.conn.last_insert_rowid();
-            self.conn.execute(
+            let new_column_id = tx.last_insert_rowid();
+            tx.execute(
                 "UPDATE app_tables SET label_column_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 params![new_column_id, payload.table_id],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 

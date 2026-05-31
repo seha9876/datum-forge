@@ -146,9 +146,15 @@ export const useAppStore = defineStore("app", {
      * @param payload 追加するカラム情報
      */
     async addColumn(payload: AddColumnPayload) {
-      await api.addColumn(payload);
-      await this.initialize();
-      await this.loadTable(payload.tableId);
+      this.error = "";
+      try {
+        await api.addColumn(payload);
+        await this.initialize();
+        await this.loadTable(payload.tableId);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
     },
     /**
      * カラム削除後に最新状態を再読み込みします。
