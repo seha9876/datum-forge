@@ -39,6 +39,7 @@ function requiredRule(label: string): ValidationRule {
     isRequiredValueEmpty(value) ? `${label} は必須です` : true;
 }
 
+// 物理名はSQLiteの列名として使うため、バックエンドの識別子ルールと同じ条件で先に止めます。
 function physicalNameRule(value: unknown) {
   if (typeof value !== "string") {
     return "物理名は文字列で入力してください";
