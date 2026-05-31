@@ -6,6 +6,10 @@ import type {
 } from "./useTagDragManagement";
 import type { RecordTag, RecordTagGroup } from "../../../types";
 
+/**
+ * タグ管理の表示専用コンポーネントです。
+ * 保存や選択の判断は親へemitし、ここでは一覧UIとユーザー操作の入口だけを持ちます。
+ */
 const props = defineProps<{
   allTagGroupCount: number;
   canAddToCurrentGroup: boolean;
@@ -48,6 +52,7 @@ function openAddToCurrentGroup() {
 }
 
 function setDragGhostElement(element: unknown) {
+  // ドラッグゴーストの座標更新だけは高頻度なので、親のcomposableへDOM参照を渡します。
   emit(
     "update:dragGhostElement",
     element instanceof HTMLElement ? element : null

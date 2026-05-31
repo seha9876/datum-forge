@@ -28,6 +28,10 @@ export type DragGhostState = {
   label: string;
 };
 
+/**
+ * タグのドラッグ操作だけを管理します。
+ * HTML5 Drag and Dropはブラウザ標準ゴーストや禁止カーソルが出やすいため、Pointer Eventsで制御します。
+ */
 export function useTagDragManagement(params: {
   attachTagsToGroup: (tags: RecordTag[], groupId: number) => Promise<void>;
   isTagSelected: (tagId: number) => boolean;
@@ -80,6 +84,7 @@ export function useTagDragManagement(params: {
   }
 
   function findDropGroupId(clientX: number, clientY: number) {
+    // 子要素上にポインターがあっても、data属性を持つグループ行まで遡れるようelementsFromPointを使います。
     const dropTarget = document
       .elementsFromPoint(clientX, clientY)
       .find(

@@ -1,4 +1,6 @@
-//! Layout template lookup, assignment, and copy helpers.
+//! レイアウトテンプレートの検索、割り当て、複製を担当します。
+//!
+//! フォルダ共通テンプレートとフォルダ専用テンプレートの優先関係をここに閉じ込めます。
 
 use super::*;
 use rusqlite::{params, OptionalExtension};

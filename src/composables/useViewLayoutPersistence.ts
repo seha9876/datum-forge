@@ -9,6 +9,10 @@ import type {
 } from "../types";
 import type { ViewNavigationState } from "./useViewNavigationState";
 
+/**
+ * レイアウトの保存と再読み込みだけを担当します。
+ * 画面操作側は即時にローカル状態を更新し、ここで短い間隔にまとめて永続化します。
+ */
 export function useViewLayoutPersistence(state: ViewNavigationState) {
   let layoutSaveTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
@@ -26,6 +30,7 @@ export function useViewLayoutPersistence(state: ViewNavigationState) {
       globalThis.clearTimeout(layoutSaveTimer);
     }
 
+    // ドラッグ/リサイズ中の連続保存を避け、最後の操作だけをDBへ送ります。
     layoutSaveTimer = globalThis.setTimeout(() => {
       void persistRecordLayoutOverrides(
         templateId,
@@ -71,6 +76,7 @@ export function useViewLayoutPersistence(state: ViewNavigationState) {
       globalThis.clearTimeout(layoutSaveTimer);
     }
 
+    // テンプレート編集もカード操作が連続するため、レコードoverrideと同じ保存間隔にそろえます。
     layoutSaveTimer = globalThis.setTimeout(() => {
       void persistLayoutTemplateCards(template.id, cards);
     }, 240);

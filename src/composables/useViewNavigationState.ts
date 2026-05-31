@@ -17,6 +17,10 @@ import type {
   ViewTableSection
 } from "../types";
 
+/**
+ * 閲覧モード全体で共有する状態を一箇所に集めます。
+ * 操作ロジックは持たず、初期ロードと派生値だけを担当します。
+ */
 export function useViewNavigationState() {
   const tableSections = ref<ViewTableSection[]>([]);
   const customNodes = ref<ViewNavNode[]>([]);
@@ -68,6 +72,7 @@ export function useViewNavigationState() {
     error.value = "";
 
     try {
+      // 初期表示に必要な一覧を同じタイミングで読み込み、ナビとテンプレートの基準状態をそろえます。
       const [sections, nodes, records, templates] = await Promise.all([
         api.getViewTableSections(),
         api.listViewNavNodes(),

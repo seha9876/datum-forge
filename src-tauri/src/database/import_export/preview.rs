@@ -1,4 +1,6 @@
-//! Preview builders shared by CSV and Excel imports.
+//! CSV/Excel共通のインポートプレビュー生成を担当します。
+//!
+//! DB更新は行わず、取り込み前にエラー・警告・変換結果を確認するための情報だけを作ります。
 
 use super::mapping::*;
 use super::records::*;
@@ -25,6 +27,7 @@ pub(super) fn build_csv_import_preview(
     let mut skipped_count = 0;
 
     if errors.is_empty() {
+        // プレビューはDBを書き換えず、実取り込みと同じ判定だけを先に走らせます。
         for row in rows {
             match csv_row_to_values(row, columns, mapping, select_option_maps) {
                 Ok(values) => {

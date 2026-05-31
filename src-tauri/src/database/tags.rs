@@ -1,4 +1,6 @@
-//! Record tag groups, tags, and record-tag link operations.
+//! レコードタグ、タググループ、タグ紐付けを担当します。
+//!
+//! タグは複数グループに所属できるため、一覧取得では所属グループと利用件数を同時に返します。
 
 use super::validation::*;
 use super::*;
@@ -20,6 +22,7 @@ impl Db {
         let table = self.get_table_summary(table_id)?;
         self.ensure_table_record_exists(&table.table_name, record_id)?;
 
+        // タグの所属グループと利用件数を同時に返し、フロント側で追加問い合わせせず表示できるようにします。
         let mut stmt = self.conn.prepare(
             "
             SELECT

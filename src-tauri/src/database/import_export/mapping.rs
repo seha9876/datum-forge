@@ -1,4 +1,6 @@
-//! Column mapping resolution and import warnings.
+//! インポート列の対応付けと警告生成を担当します。
+//!
+//! 自動推定は補助に留め、曖昧な列はプレビューで確認できるようにします。
 
 use super::*;
 use std::collections::{HashMap, HashSet};

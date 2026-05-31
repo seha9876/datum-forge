@@ -10,6 +10,10 @@ export type TagPointerSelectionCandidate = {
   shiftKey: boolean;
 };
 
+/**
+ * タグの複数選択だけを管理します。
+ * 表示中タグが変わったときに選択を剪定し、存在しないタグIDを後続操作へ渡さないようにします。
+ */
 export function useTagSelection(params: {
   selectedGroup: { value: GroupFilter };
   tags: () => RecordTag[];
@@ -38,6 +42,7 @@ export function useTagSelection(params: {
   watch(
     () => params.visibleTagIds(),
     (tagIds) => {
+      // グループ切り替えや検索で見えなくなったタグは、一括操作の対象から外します。
       pruneSelection(tagIds);
     }
   );

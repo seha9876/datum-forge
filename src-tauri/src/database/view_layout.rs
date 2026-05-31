@@ -1,4 +1,6 @@
-//! View layout command entry points.
+//! 閲覧レイアウトcommandの入口です。
+//!
+//! テンプレート、カード、紐付け、個別overrideの詳細は子moduleへ分け、公開commandの粒度は維持します。
 
 mod cards;
 mod resolver;

@@ -1,4 +1,6 @@
-//! Import/export command entry points.
+//! インポート/エクスポートcommandの入口です。
+//!
+//! ファイル形式ごとの解析や行変換は子moduleへ委譲し、ここでは公開payloadに対応する処理順だけを保ちます。
 
 mod csv;
 mod excel;

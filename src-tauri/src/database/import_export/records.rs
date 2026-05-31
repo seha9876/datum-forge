@@ -1,4 +1,6 @@
-//! Import row conversion and record insert/update helpers.
+//! インポート行の値変換とレコード追加/更新補助を担当します。
+//!
+//! IDを使う方式と自動採番方式の違いをここに閉じ込め、上位moduleの分岐を増やさないようにします。
 
 use super::*;
 use crate::database::validation::*;

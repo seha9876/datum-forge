@@ -1,4 +1,6 @@
-//! CSV escaping and source-file reading helpers.
+//! CSVのエスケープと読み込み補助です。
+//!
+//! 形式依存の処理だけをここに置き、DBへの反映やプレビュー生成は上位moduleへ委譲します。
 
 use super::*;
 use std::collections::HashMap;

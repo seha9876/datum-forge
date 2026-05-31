@@ -4,6 +4,10 @@ import { computed } from "vue";
 import type { GroupFilter, TagSection } from "./TagManagerPanel.helpers";
 import type { RecordTag, RecordTagGroup } from "../../../types";
 
+/**
+ * タグ管理で使うダイアログ群をまとめた表示コンポーネントです。
+ * v-modelの状態名は親に残し、保存・追加の判断も親へemitして副作用を分離します。
+ */
 const props = defineProps<{
   contextTag: RecordTag | null;
   filteredDialogGroups: RecordTagGroup[];

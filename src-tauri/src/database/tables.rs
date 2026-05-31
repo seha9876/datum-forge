@@ -1,4 +1,6 @@
-//! Table, column, and record persistence operations.
+//! テーブル、カラム、レコード本体の永続化を担当します。
+//!
+//! タグや閲覧ナビなどの関連データ削除はここで整合性を守りますが、各機能の詳細操作は専用moduleへ寄せます。
 
 use super::validation::*;
 use super::*;

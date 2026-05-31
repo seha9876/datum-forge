@@ -1,4 +1,6 @@
-//! Excel workbook parsing helpers for table import.
+//! Excel workbookをインポート候補へ変換する補助です。
+//!
+//! シート内の矩形範囲検出に責務を限定し、DB列との対応付けはmapping側で行います。
 
 use super::mapping::normalize_match_text;
 use super::*;

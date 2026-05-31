@@ -5,10 +5,16 @@ import { useViewLayoutTemplates } from "./useViewLayoutTemplates";
 import { useViewNavFolders } from "./useViewNavFolders";
 import { useViewNavigationState } from "./useViewNavigationState";
 
+/**
+ * 閲覧モードが外部へ公開してきた API 形状を保つ facade です。
+ * 内部責務は分割しますが、呼び出し側が参照する戻り値名はここで固定します。
+ */
 export function useViewNavigation() {
   const state = useViewNavigationState();
   const persistenceActions = useViewLayoutPersistence(state);
 
+  // フォルダ操作とテンプレート操作は相互に再読み込みを呼ぶため、
+  // importを循環させず、この入口で依存関数だけを遅延接続します。
   let templateActions!: ReturnType<typeof useViewLayoutTemplates>;
   const folderActions = useViewNavFolders(state, {
     clearTemplatePreview: () => templateActions.clearTemplatePreview(),
@@ -29,6 +35,7 @@ export function useViewNavigation() {
     void state.initialize();
   });
 
+  // 既存画面の参照名を壊さないことが、このfacadeの一番大事な責務です。
   return {
     createFolder: folderActions.createFolder,
     customTree: state.customTree,

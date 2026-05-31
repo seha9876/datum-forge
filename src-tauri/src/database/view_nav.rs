@@ -1,4 +1,6 @@
-//! Folder-based navigation tree and folder-record membership operations.
+//! 閲覧モードのフォルダツリーと、フォルダ内レコード配置を担当します。
+//!
+//! レコードの実データやレイアウト保存は別moduleに任せ、ここでは目次上の所属と順序だけを扱います。
 
 use super::*;
 use rusqlite::{params, OptionalExtension};

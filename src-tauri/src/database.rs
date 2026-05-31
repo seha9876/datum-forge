@@ -1,6 +1,7 @@
-//! SQLite backend module facade.
+//! SQLiteバックエンドのmodule facadeです。
 //!
-//! Public IPC types and Db methods are split by responsibility under database/.
+//! `database::*`の公開形状を保ちながら、実装だけを責務別moduleへ分けます。
+//! Tauri command名やDBスキーマを変えないことが、この階層の前提です。
 mod import_export;
 mod models;
 mod schema;

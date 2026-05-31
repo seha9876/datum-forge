@@ -1,4 +1,6 @@
-//! Resolved layout item builder for record view rendering.
+//! レコード表示用の解決済みレイアウトを組み立てます。
+//!
+//! テンプレートの基準カードにレコード個別overrideを重ね、フロントがそのまま描画できる形へそろえます。
 
 use super::*;
 use rusqlite::params;
@@ -10,6 +12,7 @@ impl Db {
         table_id: i64,
         record_id: i64,
     ) -> Result<Vec<ViewLayoutCardItem>, DbError> {
+        // テンプレート値を基準にしてoverrideをCOALESCEで重ねることで、未設定項目は常に基準値へ戻します。
         let mut stmt = self.conn.prepare(
             "
             SELECT

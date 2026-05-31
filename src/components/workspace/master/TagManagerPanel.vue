@@ -26,6 +26,10 @@ import type {
 
 type TagDialogMode = "tagPicker" | "groupPicker";
 
+/**
+ * タグ管理パネルの親は、保存APIと状態の結線だけを担当します。
+ * 一覧表示、ダイアログ、複数選択、ドラッグ操作は子コンポーネント/composableに逃がします。
+ */
 const props = defineProps<{
   groups: RecordTagGroup[];
   tags: RecordTag[];
@@ -73,6 +77,7 @@ const selectedGroupObject = computed(() =>
 );
 
 const visibleSections = computed<TagSection[]>(() => {
+  // 「すべて」ではタグが複数グループに出るため、選択状態は visibleTagIds 側で重複排除します。
   if (selectedGroup.value === "all") {
     const groupSections = props.groups.map((group) => {
       const tags = tagsInGroup(group.id);
@@ -333,6 +338,7 @@ async function attachTagsToGroup(tags: RecordTag[], groupId: number) {
 async function toggleSelectedTagsForGroup(groupId: number) {
   const tags = selectedTags.value;
   if (tags.length === 0) {
+    // 選択タグがない場合のグループクリックは、一括操作ではなく表示切り替えとして扱います。
     selectedGroup.value = groupId;
     return;
   }

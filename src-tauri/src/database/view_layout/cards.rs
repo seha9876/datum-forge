@@ -1,4 +1,6 @@
-//! Layout card query and persistence helpers.
+//! レイアウトカードの取得と保存を担当します。
+//!
+//! テンプレート上の基準配置だけを扱い、レコード個別overrideの反映はresolver側で行います。
 
 use super::*;
 use crate::database::validation::bool_to_i64;

@@ -18,6 +18,10 @@ import type { ViewLayoutPersistenceActions } from "./useViewLayoutPersistence";
 import type { ViewLayoutTemplateActions } from "./useViewLayoutTemplates";
 import type { ViewNavigationState } from "./useViewNavigationState";
 
+/**
+ * 閲覧ナビのフォルダ/登録済みレコード操作だけを扱います。
+ * レイアウトテンプレートの実処理は依存関数として受け取り、責務をまたぐ保存仕様をここに閉じ込めません。
+ */
 export function useViewNavFolders(
   state: ViewNavigationState,
   dependencies: {
@@ -47,6 +51,7 @@ export function useViewNavFolders(
     state.layoutCardItems.value = [];
     state.activeLayoutTemplateId.value = null;
     state.activeLayoutTemplateName.value = null;
+    // フォルダ選択時は、そのフォルダに割り当て可能なテンプレートだけを再同期します。
     void dependencies.loadFolderLayoutTemplates(node.id);
   }
 
@@ -125,6 +130,7 @@ export function useViewNavFolders(
       folderRecordId: record.id,
       recordTemplateId: record.recordTemplateId
     };
+    // レコード表示は「フォルダ所属」と「解決済みレイアウト」を両方必要とするため並行して更新します。
     void dependencies.loadFolderLayoutTemplates(record.folderId);
     void loadSelectedTableRecord(
       record.tableId,
@@ -140,6 +146,7 @@ export function useViewNavFolders(
       state.customNodes.value,
       node.id
     );
+    // 子孫フォルダに含まれるレコード選択も無効になるため、record keyで選択解除対象を判定します。
     const deletingRecordKeys = state.folderRecords.value
       .filter((record) => deletingIds.includes(record.folderId))
       .map((record) => `${record.tableId}:${record.recordId}`);

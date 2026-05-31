@@ -10,6 +10,10 @@ import type {
 import type { ViewLayoutPersistenceActions } from "./useViewLayoutPersistence";
 import type { ViewNavigationState } from "./useViewNavigationState";
 
+/**
+ * レイアウトテンプレートの作成・選択・割り当てを担当します。
+ * 実際のカード保存や解決済みレイアウト再取得は persistence 側へ委譲します。
+ */
 export function useViewLayoutTemplates(
   state: ViewNavigationState,
   dependencies: {
@@ -59,6 +63,7 @@ export function useViewLayoutTemplates(
       templateId
     });
     await loadFolderLayoutTemplates(folderId);
+    // レコード個別テンプレートがない場合だけ、フォルダ割当の変更が現在表示へ反映されます。
     if (
       state.selectedItem.value?.type === "tableRecord" &&
       state.selectedItem.value.folderId === folderId &&
@@ -174,6 +179,7 @@ export function useViewLayoutTemplates(
         ? { ...record, recordTemplateId: null }
         : record
     );
+    // 削除したテンプレートを参照する表示状態を残すと、次回保存時に存在しないIDを送ってしまいます。
     if (
       state.selectedItem.value?.type === "tableRecord" &&
       state.selectedItem.value.recordTemplateId === templateId
