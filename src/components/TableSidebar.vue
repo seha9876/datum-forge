@@ -4,6 +4,7 @@ import { ref } from "vue";
 
 import { useAppNotifications } from "../composables/useAppNotifications";
 import { useConfirmDialog } from "../composables/useConfirmDialog";
+import { formatImportNotificationDetails } from "../utils/importErrorMessages";
 
 import ExcelImportDialog from "./ExcelImportDialog.vue";
 
@@ -228,7 +229,7 @@ async function runCsvImport(
         skippedCount: result.skippedCount,
         errorCount: result.errorCount
       },
-      details: result.details
+      details: formatImportNotificationDetails(result.details)
     });
   } catch (error) {
     const message = errorMessage(error);
@@ -242,7 +243,7 @@ async function runCsvImport(
         skippedCount: 0,
         errorCount: 1
       },
-      details: [message]
+      details: formatImportNotificationDetails([message])
     });
   }
 }
@@ -267,7 +268,7 @@ async function prepareExcelImport(table: AppTableSummary, inputPath: string) {
         skippedCount: 0,
         errorCount: 1
       },
-      details: [errorMessage(error)]
+      details: formatImportNotificationDetails([errorMessage(error)])
     });
   }
 }
@@ -320,7 +321,9 @@ async function handleImportTable(
       skippedCount: 0,
       errorCount: 1
     },
-    details: [`未対応の拡張子です: .${extension || "なし"}`]
+    details: formatImportNotificationDetails([
+      `未対応の拡張子です: .${extension || "なし"}`
+    ])
   });
 }
 
@@ -335,7 +338,7 @@ function notifyExcelImportResult(result: ImportTableCsvResult) {
       skippedCount: result.skippedCount,
       errorCount: result.errorCount
     },
-    details: result.details
+    details: formatImportNotificationDetails(result.details)
   });
 }
 
@@ -350,7 +353,7 @@ function notifyExcelImportError(error: unknown) {
       skippedCount: 0,
       errorCount: 1
     },
-    details: [errorMessage(error)]
+    details: formatImportNotificationDetails([errorMessage(error)])
   });
 }
 
