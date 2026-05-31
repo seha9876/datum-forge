@@ -26,6 +26,7 @@ import type {
   GetViewLayoutTemplateCardsPayload,
   GetResolvedViewFieldLayoutPayload,
   ImportTableCsvPayload,
+  ImportTableCsvResult,
   ListViewLayoutCardColumnBindingsPayload,
   ListViewLayoutTemplatesForFolderPayload,
   ReferenceChoice,
@@ -106,7 +107,7 @@ export const api = {
     invoke<void>("export_table_csv", { payload }),
   /** 選択されたCSVを指定方式で対象テーブルへ取り込みます。 */
   importTableCsv: (payload: ImportTableCsvPayload) =>
-    invoke<void>("import_table_csv", { payload }),
+    invoke<ImportTableCsvResult>("import_table_csv", { payload }),
   /**
    * テーブルに新しいカラムを追加します。
    *

@@ -324,6 +324,23 @@ pub struct ImportTableCsvPayload {
     pub mode: ImportTableCsvMode,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportTableCsvResult {
+    /// フロント側の通知色を決めるための最終結果です。
+    pub status: String,
+    /// CSVから新しく追加できた行数です。
+    pub inserted_count: usize,
+    /// 既存IDに対して更新できた行数です。
+    pub updated_count: usize,
+    /// 既存IDと重複したため取り込まなかった行数です。
+    pub skipped_count: usize,
+    /// 現在はall-or-nothingなので、成功時は常に0です。
+    pub error_count: usize,
+    /// 警告や詳細確認に使う補足メッセージです。
+    pub details: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddColumnPayload {
@@ -1778,7 +1795,10 @@ impl Db {
         Ok(())
     }
 
-    pub fn import_table_csv(&mut self, payload: ImportTableCsvPayload) -> Result<(), DbError> {
+    pub fn import_table_csv(
+        &mut self,
+        payload: ImportTableCsvPayload,
+    ) -> Result<ImportTableCsvResult, DbError> {
         let input_path = payload.input_path.trim();
         if input_path.is_empty() {
             return Err(DbError::InvalidInput("inputPath is required".into()));
@@ -1794,6 +1814,11 @@ impl Db {
 
         // インポートは途中失敗時に中途半端な行を残さないよう、全行を1トランザクションで処理します。
         let tx = self.conn.transaction()?;
+        let mut inserted_count = 0;
+        let mut updated_count = 0;
+        let mut skipped_count = 0;
+        let mut details = Vec::new();
+
         for (row_index, record) in reader.records().enumerate() {
             let record = record?;
             // csv crateのrow_indexはデータ行の0始まりです。人が見て分かるようヘッダー分を足します。
@@ -1806,27 +1831,49 @@ impl Db {
                     // 既存IDは触らず、CSVにしかないIDの行だけ追加します。
                     let id = csv_row_id(&values, row_number)?;
                     if csv_record_exists(&tx, &table.table_name, id)? {
+                        skipped_count += 1;
                         continue;
                     }
                     csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                    inserted_count += 1;
                 }
                 ImportTableCsvMode::AppendIgnoringPrimaryKeys => {
                     // CSVのIDを無視し、DB側に新しいIDを採番させて全行を追加します。
                     csv_insert_record(&tx, &table.table_name, &columns, &values, false)?;
+                    inserted_count += 1;
                 }
                 ImportTableCsvMode::UpsertByPrimaryKey => {
                     // 同じIDがあれば更新、なければCSVのIDを維持して追加します。
                     let id = csv_row_id(&values, row_number)?;
                     if csv_record_exists(&tx, &table.table_name, id)? {
                         csv_update_record(&tx, &table.table_name, &columns, &values, id)?;
+                        updated_count += 1;
                     } else {
                         csv_insert_record(&tx, &table.table_name, &columns, &values, true)?;
+                        inserted_count += 1;
                     }
                 }
             }
         }
         tx.commit()?;
-        Ok(())
+        if skipped_count > 0 {
+            details.push(format!(
+                "{skipped_count}件は既存IDと重複したためスキップしました。"
+            ));
+        }
+
+        Ok(ImportTableCsvResult {
+            status: if skipped_count > 0 {
+                "warning".into()
+            } else {
+                "success".into()
+            },
+            inserted_count,
+            updated_count,
+            skipped_count,
+            error_count: 0,
+            details,
+        })
     }
 
     pub fn save_record(&self, payload: SaveRecordPayload) -> Result<(), DbError> {

@@ -2,6 +2,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import AppNotificationSnackbar from "./components/AppNotificationSnackbar.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import DatabaseSetupPage from "./components/DatabaseSetupPage.vue";
 import ModeWorkspaceShell from "./components/ModeWorkspaceShell.vue";
@@ -12,6 +13,10 @@ import MasterManagementSidebar from "./components/workspace/master/MasterManagem
 import ViewNavigationSidebar from "./components/workspace/view/ViewNavigationSidebar.vue";
 import WorkspaceModeTabs from "./components/workspace/WorkspaceModeTabs.vue";
 import WorkspaceModeHelpDialog from "./components/WorkspaceModeHelpDialog.vue";
+import {
+  createAppNotifications,
+  provideAppNotifications
+} from "./composables/useAppNotifications";
 import {
   createConfirmDialog,
   provideConfirmDialog
@@ -140,6 +145,8 @@ const {
 
 const confirmDialog = createConfirmDialog();
 provideConfirmDialog(confirmDialog);
+const appNotifications = createAppNotifications();
+provideAppNotifications(appNotifications);
 
 /** サイドバーを省スペース表示するかどうかを表します。 */
 const isSidebarRail = ref(false);
@@ -685,5 +692,6 @@ onMounted(() => {
       :table-count="viewTableCount"
     />
     <ConfirmDialog :controller="confirmDialog" />
+    <AppNotificationSnackbar :controller="appNotifications" />
   </v-app>
 </template>

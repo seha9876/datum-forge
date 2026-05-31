@@ -2,12 +2,14 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { ref } from "vue";
 
+import { useAppNotifications } from "../composables/useAppNotifications";
 import { useConfirmDialog } from "../composables/useConfirmDialog";
 
 import type {
   AppBootstrap,
   AppTableSummary,
-  ImportTableCsvMode
+  ImportTableCsvMode,
+  ImportTableCsvResult
 } from "../types";
 
 /** CSVインポートで最後に使った方式をブラウザ内へ保存するためのキーです。 */
@@ -53,12 +55,13 @@ const props = defineProps<{
     tableId: number,
     inputPath: string,
     mode: ImportTableCsvMode
-  ) => Promise<void>;
+  ) => Promise<ImportTableCsvResult>;
   onLoadTable: (tableId: number) => Promise<void>;
   onOpenCreateDialog: () => void;
 }>();
 
 const confirmDialog = useConfirmDialog();
+const appNotifications = useAppNotifications();
 /** 通常クリック時に使う、現在選択中のCSVインポート方式です。 */
 const selectedImportMode = ref<ImportTableCsvMode>(loadCsvImportMode());
 
@@ -101,6 +104,20 @@ function csvImportModeDescription(mode: ImportTableCsvMode) {
     case "upsertByPrimaryKey":
       return "既存IDは更新し、ないIDは追加します";
   }
+}
+
+function importResultTitle(status: ImportTableCsvResult["status"]) {
+  return status === "warning" ? "インポート警告" : "インポート成功";
+}
+
+function importResultMessage(status: ImportTableCsvResult["status"]) {
+  return status === "warning"
+    ? "CSVの取り込みは完了しましたが、確認が必要な行があります。"
+    : "CSVの取り込みが完了しました。";
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** レール表示の丸アイコンへ入れる、テーブル名の先頭1文字を返します。 */
@@ -170,7 +187,35 @@ async function handleImportTableCsv(
     return;
   }
 
-  await props.onImportTableCsv(table.id, inputPath, mode);
+  try {
+    const result = await props.onImportTableCsv(table.id, inputPath, mode);
+    appNotifications.notify({
+      kind: result.status,
+      title: importResultTitle(result.status),
+      message: importResultMessage(result.status),
+      metrics: {
+        insertedCount: result.insertedCount,
+        updatedCount: result.updatedCount,
+        skippedCount: result.skippedCount,
+        errorCount: result.errorCount
+      },
+      details: result.details
+    });
+  } catch (error) {
+    const message = errorMessage(error);
+    appNotifications.notify({
+      kind: "error",
+      title: "インポートエラー",
+      message: "CSVの取り込みに失敗しました。",
+      metrics: {
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 1
+      },
+      details: [message]
+    });
+  }
 }
 
 async function handleDeleteTable(table: AppTableSummary) {

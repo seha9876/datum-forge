@@ -130,9 +130,10 @@ export const useAppStore = defineStore("app", {
     async importTableCsv(payload: ImportTableCsvPayload) {
       this.error = "";
       try {
-        await api.importTableCsv(payload);
+        const result = await api.importTableCsv(payload);
         await this.initialize();
         await this.loadTable(payload.tableId);
+        return result;
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error);
         throw error;

@@ -453,6 +453,17 @@ export interface ImportTableCsvPayload {
   mode: ImportTableCsvMode;
 }
 
+export type ImportTableCsvStatus = "success" | "warning";
+
+export interface ImportTableCsvResult {
+  status: ImportTableCsvStatus;
+  insertedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  details: string[];
+}
+
 export interface AddColumnPayload {
   tableId: number;
   columnName: string;

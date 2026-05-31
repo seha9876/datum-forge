@@ -507,8 +507,9 @@ export function useDatumForge() {
     inputPath: string,
     mode: ImportTableCsvMode
   ) {
-    await store.importTableCsv({ tableId, inputPath, mode });
+    const result = await store.importTableCsv({ tableId, inputPath, mode });
     resetRecordForm();
+    return result;
   }
 
   onMounted(() => {

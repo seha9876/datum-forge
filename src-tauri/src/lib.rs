@@ -16,7 +16,7 @@ use database::{
     DeleteRecordTagPayload, DeleteTablePayload, DeleteViewLayoutTemplatePayload,
     DeleteViewNavFolderPayload, DetachRecordTagPayload, DuplicateViewLayoutTemplatePayload,
     ExportTableCsvPayload, FolderViewLayoutTemplates, GetResolvedViewFieldLayoutPayload,
-    GetViewLayoutTemplateCardsPayload, ImportTableCsvPayload,
+    GetViewLayoutTemplateCardsPayload, ImportTableCsvPayload, ImportTableCsvResult,
     ListViewLayoutCardColumnBindingsPayload, ListViewLayoutTemplatesForFolderPayload, RecordTag,
     RecordTagBundle, RecordTagGroup, RecordTagGroupLinkPayload, ReferenceChoice,
     RemoveViewNavFolderRecordPayload, RenameViewLayoutTemplatePayload, ReorderColumnsPayload,
@@ -225,7 +225,7 @@ fn export_table_csv(
 fn import_table_csv(
     state: State<'_, AppState>,
     payload: ImportTableCsvPayload,
-) -> Result<(), String> {
+) -> Result<ImportTableCsvResult, String> {
     state
         .db
         .lock()
