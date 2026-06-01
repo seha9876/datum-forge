@@ -161,8 +161,10 @@ fn csv_cell_to_value(
             "true" | "1" => Ok(Value::from(true)),
             "false" | "0" => Ok(Value::from(false)),
             _ => Err(DbError::InvalidInput(format!(
-                "row {}: {} must be true, false, 1, or 0",
-                row_number, column.display_name
+                "row {}: {} must be true, false, 1, or 0 (raw: {})",
+                row_number,
+                column.display_name,
+                debug_import_value(raw)
             ))),
         },
         "single_select" => {
@@ -172,8 +174,10 @@ fn csv_cell_to_value(
                 .copied()
                 .ok_or_else(|| {
                     DbError::InvalidInput(format!(
-                        "row {}: {} does not match an option",
-                        row_number, column.display_name
+                        "row {}: {} does not match an option (raw: {})",
+                        row_number,
+                        column.display_name,
+                        debug_import_value(raw)
                     ))
                 })?;
             Ok(Value::from(option_no))
@@ -183,13 +187,19 @@ fn csv_cell_to_value(
             let id_text = text.split_once(':').map(|(id, _)| id).unwrap_or(text);
             id_text.trim().parse::<i64>().map(Value::from).map_err(|_| {
                 DbError::InvalidInput(format!(
-                    "row {}: {} must be a reference id",
-                    row_number, column.display_name
+                    "row {}: {} must be a reference id (raw: {})",
+                    row_number,
+                    column.display_name,
+                    debug_import_value(raw)
                 ))
             })
         }
         _ => Ok(Value::String(raw.to_string())),
     }
+}
+
+fn debug_import_value(raw: &str) -> String {
+    format!("{raw:?}")
 }
 
 pub(super) fn csv_row_id(
@@ -284,4 +294,39 @@ pub(super) fn csv_update_record(
         params_from_iter(sql_values.iter().map(|value| value.as_ref())),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_column(field_type: &str, column_name: &str, display_name: &str) -> AppColumn {
+        AppColumn {
+            id: 1,
+            table_id: 1,
+            column_name: column_name.into(),
+            display_name: display_name.into(),
+            field_type: field_type.into(),
+            sort_order: 1,
+            select_option_group_id: None,
+            ref_table_id: None,
+            is_required: false,
+        }
+    }
+
+    #[test]
+    fn single_select_error_includes_raw_value() {
+        let column = make_column("single_select", "sex", "Sex");
+        let options = HashMap::from([("sex".into(), HashMap::from([("male".into(), 1)]))]);
+        let error = csv_cell_to_value(&column, "男", &options, 2).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("row 2: Sex does not match an option (raw: \"男\")"));
+    }
+
+    #[test]
+    fn debug_import_value_preserves_escape_sequences() {
+        assert_eq!(debug_import_value("男\n\t"), "\"男\\n\\t\"");
+    }
 }

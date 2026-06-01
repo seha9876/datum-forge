@@ -129,7 +129,7 @@ function parseRowMessage(message: string, rawMessage: string) {
   }
 
   const row = Number(rowMatch[1]);
-  const body = rowMatch[2];
+  const body = rowMatch[2].replace(/\s+\(raw:\s.*\)$/, "");
   const knownReasons = [
     "must be true, false, 1, or 0",
     "has no Excel column mapping",
