@@ -152,12 +152,7 @@ fn read_shared_strings(
     let doc = parse_xml(&xml, "sharedStrings.xml")?;
     let mut strings = Vec::new();
     for item in doc.descendants().filter(|node| node.has_tag_name("si")) {
-        strings.push(
-            item.descendants()
-                .filter(|node| node.has_tag_name("t"))
-                .filter_map(|node| node.text())
-                .collect::<String>(),
-        );
+        strings.push(extract_excel_text(item));
     }
     Ok(strings)
 }
@@ -241,10 +236,7 @@ fn read_worksheet_cells(
         };
         let cell_type = attr_value(cell, "t").unwrap_or_default();
         let raw_value = if cell_type == "inlineStr" {
-            cell.descendants()
-                .filter(|node| node.has_tag_name("t"))
-                .filter_map(|node| node.text())
-                .collect::<String>()
+            extract_excel_text(cell)
         } else {
             cell.children()
                 .find(|node| node.has_tag_name("v"))
@@ -330,6 +322,20 @@ fn read_excel_table(
 fn parse_xml<'a>(text: &'a str, label: &str) -> Result<roxmltree::Document<'a>, DbError> {
     roxmltree::Document::parse(text)
         .map_err(|e| DbError::InvalidInput(format!("Excel XML `{label}` is invalid: {e}")))
+}
+
+fn extract_excel_text(node: roxmltree::Node<'_, '_>) -> String {
+    node.descendants()
+        .filter(|child| child.has_tag_name("t"))
+        .filter(|child| !has_ancestor_tag(*child, "rPh"))
+        .filter_map(|child| child.text())
+        .collect()
+}
+
+fn has_ancestor_tag(node: roxmltree::Node<'_, '_>, tag_name: &str) -> bool {
+    node.ancestors()
+        .skip(1)
+        .any(|ancestor| ancestor.tag_name().name() == tag_name)
 }
 
 fn attr_value(node: roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
@@ -455,4 +461,72 @@ pub(super) fn suggest_excel_table_name(
             })
         })
         .map(|item| item.name.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_excel_text_ignores_phonetic_text_in_shared_strings() {
+        let doc = roxmltree::Document::parse(
+            r#"<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                <si>
+                    <r><t>男</t></r>
+                    <rPh sb="0" eb="1"><t>オトコ</t></rPh>
+                </si>
+            </sst>"#,
+        )
+        .unwrap();
+        let item = doc
+            .descendants()
+            .find(|node| node.has_tag_name("si"))
+            .unwrap();
+
+        assert_eq!(extract_excel_text(item), "男");
+    }
+
+    #[test]
+    fn extract_excel_text_ignores_phonetic_text_in_inline_strings() {
+        let doc = roxmltree::Document::parse(
+            r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                <sheetData>
+                    <row r="2">
+                        <c r="A2" t="inlineStr">
+                            <is>
+                                <r><t>女</t></r>
+                                <rPh sb="0" eb="1"><t>オンナ</t></rPh>
+                            </is>
+                        </c>
+                    </row>
+                </sheetData>
+            </worksheet>"#,
+        )
+        .unwrap();
+        let cell = doc
+            .descendants()
+            .find(|node| node.has_tag_name("c"))
+            .unwrap();
+
+        assert_eq!(extract_excel_text(cell), "女");
+    }
+
+    #[test]
+    fn extract_excel_text_keeps_split_visible_runs() {
+        let doc = roxmltree::Document::parse(
+            r#"<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                <si>
+                    <r><t>山</t></r>
+                    <r><t>田</t></r>
+                </si>
+            </sst>"#,
+        )
+        .unwrap();
+        let item = doc
+            .descendants()
+            .find(|node| node.has_tag_name("si"))
+            .unwrap();
+
+        assert_eq!(extract_excel_text(item), "山田");
+    }
 }
