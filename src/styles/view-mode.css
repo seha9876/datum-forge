@@ -401,6 +401,56 @@
   padding: 0.05rem 0.15rem 0.35rem 0;
 }
 
+.view-binding-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.8rem;
+}
+
+.view-binding-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.view-binding-slot-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.view-binding-slot {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(var(--v-theme-outline), 0.16);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.72);
+}
+
+.view-binding-slot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.view-binding-slot-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: start;
+}
+
+.view-binding-slot-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
 @media (max-width: 1180px) {
   .view-layout-workspace:has(.view-binding-panel) {
     grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
@@ -427,6 +477,18 @@
   padding-bottom: 0.9rem;
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+
+.view-field-card-stack {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.view-field-card-row {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .view-style-control {

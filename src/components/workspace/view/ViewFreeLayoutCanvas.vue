@@ -106,10 +106,12 @@ const viewportOffsetY = ref(0);
 const panDrag = ref<PanDrag | null>(null);
 const isSpacePressed = ref(false);
 const isBindingEditorOpen = ref(false);
-const bindingDraft = ref<Record<number, number | null>>({});
+const bindingDraft = ref<Record<number, Array<number | null>>>({});
 const selectedBindingCardId = ref<number | null>(null);
 const templatePreviewMenuOpen = ref(false);
-const templatePreviewBindingDraft = ref<Record<number, number | null>>({});
+const templatePreviewBindingDraft = ref<Record<number, Array<number | null>>>(
+  {}
+);
 const isTemplatePreviewBindingsOpen = ref(false);
 const hasManuallyToggledTemplatePreviewBindings = ref(false);
 const viewportPercent = computed(() => Math.round(viewportScale.value * 100));
@@ -156,9 +158,8 @@ const displayColumns = computed(() =>
   )
 );
 function isBoundToCurrentTable(item: ViewLayoutCardItem) {
-  return (
-    item.columnId !== null &&
-    displayColumns.value.some((column) => column.id === item.columnId)
+  return item.columns.some((binding) =>
+    displayColumns.value.some((column) => column.id === binding.columnId)
   );
 }
 
@@ -211,10 +212,8 @@ const hasUnboundTemplateForTable = computed(
     !isTemplateMode.value &&
     bindableTemplateLayouts.value.length > 0 &&
     displayColumns.value.length > 0 &&
-    bindableTemplateLayouts.value.every(
-      (layout) =>
-        layout.columnId === null ||
-        !displayColumns.value.some((column) => column.id === layout.columnId)
+    bindableTemplateLayouts.value.every((layout) =>
+      resolvedColumnIds(layout).every((columnId) => !columnId)
     )
 );
 const isBindingEditorVisible = computed(
@@ -322,14 +321,14 @@ const templatePreviewLabel = computed(() => {
   return `${selected.tableDisplayName} / ${selected.recordLabel}`;
 });
 const bindingDraftValues = computed(() =>
-  Object.values(bindingDraft.value).filter(
-    (columnId): columnId is number => columnId !== null
-  )
+  Object.values(bindingDraft.value)
+    .flat()
+    .filter((columnId): columnId is number => columnId !== null)
 );
 const templatePreviewBindingValues = computed(() =>
-  Object.values(templatePreviewBindingDraft.value).filter(
-    (columnId): columnId is number => columnId !== null
-  )
+  Object.values(templatePreviewBindingDraft.value)
+    .flat()
+    .filter((columnId): columnId is number => columnId !== null)
 );
 const templatePreviewBoundCount = computed(
   () => templatePreviewBindingValues.value.length
@@ -337,15 +336,8 @@ const templatePreviewBoundCount = computed(
 const templatePreviewUnboundCount = computed(
   () => props.templateCards.length - templatePreviewBoundCount.value
 );
-const hasDuplicateBindingColumns = computed(() => {
-  const values = bindingDraftValues.value;
-  return new Set(values).size !== values.length;
-});
 const canSaveBindingDraft = computed(
-  () =>
-    bindingDraftValues.value.length > 0 &&
-    !hasDuplicateBindingColumns.value &&
-    !props.saving
+  () => bindingDraftValues.value.length > 0 && !props.saving
 );
 
 const selectedCardHasOverride = computed(
@@ -460,12 +452,30 @@ function columnById(columnId: number) {
   return displayColumns.value.find((column) => column.id === columnId) ?? null;
 }
 
-function effectiveColumnId(layout: ViewLayoutCardItem) {
+function normalizedBindingIds(columnIds: Array<number | null>) {
+  return columnIds.length > 0 ? columnIds : [null];
+}
+
+function layoutColumnIds(layout: ViewLayoutCardItem) {
+  return normalizedBindingIds(
+    [...layout.columns]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((binding) => binding.columnId)
+  );
+}
+
+function effectiveColumnIds(layout: ViewLayoutCardItem) {
   if (isTemplatePreviewActive.value) {
-    return templatePreviewBindingDraft.value[layout.cardId] ?? null;
+    return templatePreviewBindingDraft.value[layout.cardId] ?? [null];
   }
 
-  return layout.columnId;
+  return layoutColumnIds(layout);
+}
+
+function resolvedColumnIds(layout: ViewLayoutCardItem) {
+  return isTemplateMode.value
+    ? effectiveColumnIds(layout)
+    : layoutColumnIds(layout);
 }
 
 function fieldValue(column: AppColumn) {
@@ -476,25 +486,40 @@ function fieldLabel(columnId: number) {
   return columnById(columnId)?.displayName ?? "";
 }
 
-function fieldLabelByLayout(layout: ViewLayoutCardItem) {
+function cardSummaryLabel(layout: ViewLayoutCardItem) {
   if (isTemplateMode.value) {
-    const columnId = effectiveColumnId(layout);
-    if (isTemplatePreviewActive.value && columnId !== null) {
-      return fieldLabel(columnId);
+    const columnIds = effectiveColumnIds(layout).filter(
+      (columnId): columnId is number => columnId !== null
+    );
+    if (isTemplatePreviewActive.value && columnIds.length > 0) {
+      const firstLabel = fieldLabel(columnIds[0]);
+      return columnIds.length > 1
+        ? `${firstLabel} ほか${columnIds.length - 1}件`
+        : firstLabel;
     }
     return layout.cardId > 0 ? `カード #${layout.cardId}` : "新規カード";
   }
-  return layout.columnId === null ? "未紐付け" : fieldLabel(layout.columnId);
+
+  const columnIds = layoutColumnIds(layout).filter(
+    (columnId): columnId is number => columnId !== null
+  );
+  if (columnIds.length === 0) {
+    return "未紐付け";
+  }
+  const firstLabel = fieldLabel(columnIds[0]);
+  return columnIds.length > 1
+    ? `${firstLabel} ほか${columnIds.length - 1}件`
+    : firstLabel;
 }
 
 function removeButtonLabel(layout: ViewLayoutCardItem) {
   if (isTemplateMode.value) {
-    return `${fieldLabelByLayout(layout)} を削除`;
+    return `${cardSummaryLabel(layout)} を削除`;
   }
 
   return layout.visible
-    ? `${fieldLabelByLayout(layout)}を非表示にする`
-    : `${fieldLabelByLayout(layout)}を表示に戻す`;
+    ? `${cardSummaryLabel(layout)}を非表示にする`
+    : `${cardSummaryLabel(layout)}を表示に戻す`;
 }
 
 function removeButtonIcon(layout: ViewLayoutCardItem) {
@@ -510,17 +535,27 @@ function fieldValueByColumnId(columnId: number) {
   return column ? fieldValue(column) : "";
 }
 
-function fieldValueByLayout(layout: ViewLayoutCardItem) {
+function fieldEntriesByLayout(layout: ViewLayoutCardItem) {
+  const columnIds = resolvedColumnIds(layout).filter(
+    (columnId): columnId is number => columnId !== null
+  );
+
   if (isTemplateMode.value) {
     if (!isTemplatePreviewActive.value) {
-      return "カード枠";
+      return [];
     }
-    const columnId = effectiveColumnId(layout);
-    return columnId === null
-      ? "一時紐付けなし"
-      : fieldValueByColumnId(columnId);
+    return columnIds.map((columnId) => ({
+      key: `${layout.cardId}:${columnId}`,
+      label: fieldLabel(columnId),
+      value: fieldValueByColumnId(columnId)
+    }));
   }
-  return layout.columnId === null ? "" : fieldValueByColumnId(layout.columnId);
+
+  return columnIds.map((columnId, index) => ({
+    key: `${layout.cardId}:${columnId}:${index}`,
+    label: fieldLabel(columnId),
+    value: fieldValueByColumnId(columnId)
+  }));
 }
 
 function cardBindingLabel(layout: ViewLayoutCardItem, index: number) {
@@ -536,17 +571,23 @@ function columnDisplayName(columnId: number | null) {
   return columnById(columnId)?.displayName ?? "未紐付け";
 }
 
-function setBindingDraft(cardId: number, columnId: number | null) {
+function setBindingDraft(
+  cardId: number,
+  index: number,
+  columnId: number | null
+) {
   selectBindingCard(cardId);
+  const next = [...(bindingDraft.value[cardId] ?? [null])];
+  next[index] = columnId;
   bindingDraft.value = {
     ...bindingDraft.value,
-    [cardId]: columnId
+    [cardId]: normalizedBindingIds(next)
   };
 }
 
 function resetBindingDraft() {
   bindingDraft.value = Object.fromEntries(
-    draftLayouts.value.map((layout) => [layout.cardId, layout.columnId])
+    draftLayouts.value.map((layout) => [layout.cardId, layoutColumnIds(layout)])
   );
 }
 
@@ -554,18 +595,27 @@ function resetTemplatePreviewBindingDraft() {
   templatePreviewBindingDraft.value = Object.fromEntries(
     props.templateCards.map((card) => [
       card.cardId,
-      props.templatePreviewBindings.find(
-        (binding) => binding.cardId === card.cardId
-      )?.columnId ?? null
+      normalizedBindingIds(
+        props.templatePreviewBindings
+          .filter((binding) => binding.cardId === card.cardId)
+          .sort((left, right) => left.sortOrder - right.sortOrder)
+          .map((binding) => binding.columnId)
+      )
     ])
   );
 }
 
-function setTemplatePreviewBinding(cardId: number, columnId: unknown) {
+function setTemplatePreviewBinding(
+  cardId: number,
+  index: number,
+  columnId: unknown
+) {
   const nextColumnId = typeof columnId === "number" ? columnId : null;
+  const next = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
+  next[index] = nextColumnId;
   templatePreviewBindingDraft.value = {
     ...templatePreviewBindingDraft.value,
-    [cardId]: nextColumnId
+    [cardId]: normalizedBindingIds(next)
   };
 }
 
@@ -624,7 +674,10 @@ function clearRecordTemplate() {
 const hasUnsavedBindingChanges = computed(() => {
   if (!isBindingEditorVisible.value) return false;
   return draftLayouts.value.some(
-    (layout) => bindingDraft.value[layout.cardId] !== layout.columnId
+    (layout) =>
+      JSON.stringify(
+        normalizedBindingIds(bindingDraft.value[layout.cardId] ?? [null])
+      ) !== JSON.stringify(layoutColumnIds(layout))
   );
 });
 
@@ -638,6 +691,85 @@ function openBindingEditor() {
 function closeBindingEditor() {
   isBindingEditorOpen.value = false;
   selectedBindingCardId.value = null;
+}
+
+function addBindingSlot(cardId: number) {
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: [...(bindingDraft.value[cardId] ?? [null]), null]
+  };
+  selectBindingCard(cardId);
+}
+
+function removeBindingSlot(cardId: number, index: number) {
+  const current = [...(bindingDraft.value[cardId] ?? [null])];
+  if (current.length <= 1) {
+    bindingDraft.value = {
+      ...bindingDraft.value,
+      [cardId]: [null]
+    };
+    return;
+  }
+  current.splice(index, 1);
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: normalizedBindingIds(current)
+  };
+}
+
+function moveBindingSlot(cardId: number, index: number, direction: -1 | 1) {
+  const current = [...(bindingDraft.value[cardId] ?? [null])];
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= current.length) {
+    return;
+  }
+  const [moved] = current.splice(index, 1);
+  current.splice(nextIndex, 0, moved);
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: current
+  };
+}
+
+function addTemplatePreviewBindingSlot(cardId: number) {
+  templatePreviewBindingDraft.value = {
+    ...templatePreviewBindingDraft.value,
+    [cardId]: [...(templatePreviewBindingDraft.value[cardId] ?? [null]), null]
+  };
+}
+
+function removeTemplatePreviewBindingSlot(cardId: number, index: number) {
+  const current = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
+  if (current.length <= 1) {
+    templatePreviewBindingDraft.value = {
+      ...templatePreviewBindingDraft.value,
+      [cardId]: [null]
+    };
+    return;
+  }
+  current.splice(index, 1);
+  templatePreviewBindingDraft.value = {
+    ...templatePreviewBindingDraft.value,
+    [cardId]: normalizedBindingIds(current)
+  };
+}
+
+function moveTemplatePreviewBindingSlot(
+  cardId: number,
+  index: number,
+  direction: -1 | 1
+) {
+  const current = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= current.length) {
+    return;
+  }
+  const [moved] = current.splice(index, 1);
+  current.splice(nextIndex, 0, moved);
+  templatePreviewBindingDraft.value = {
+    ...templatePreviewBindingDraft.value,
+    [cardId]: current
+  };
 }
 
 /**
@@ -680,10 +812,13 @@ function saveBindingDraft() {
   emit(
     "save-card-column-bindings",
     Object.entries(bindingDraft.value)
-      .map(([cardId, columnId]) => ({
-        cardId: Number(cardId),
-        columnId
-      }))
+      .flatMap(([cardId, columnIds]) =>
+        normalizedBindingIds(columnIds).map((columnId, sortOrder) => ({
+          cardId: Number(cardId),
+          columnId,
+          sortOrder
+        }))
+      )
       .filter(
         (binding): binding is ViewLayoutCardColumnBinding =>
           Number.isFinite(binding.cardId) && binding.columnId !== null
@@ -1273,7 +1408,7 @@ function addTemplateCard() {
   const next: ViewLayoutCardItem = {
     tableId: 0,
     cardId,
-    columnId: null,
+    columns: [],
     presetId: null,
     label: null,
     x: 120 + offset,
@@ -1315,7 +1450,7 @@ function templateCardToLayout(
   return {
     tableId: 0,
     cardId: card.cardId,
-    columnId: null,
+    columns: [],
     presetId: normalizedPresetId(card),
     label: null,
     x: card.x,
@@ -1471,15 +1606,23 @@ function layoutToTemplateCard(
                 <div class="view-field-card-header">
                   <span>{{ cardBindingLabel(layout, index) }}</span>
                 </div>
-                <p class="view-field-card-value">
-                  {{ columnDisplayName(bindingDraft[layout.cardId] ?? null) }}
-                </p>
+                <div class="view-field-card-stack">
+                  <p
+                    v-for="(columnId, bindingIndex) in bindingDraft[
+                      layout.cardId
+                    ] ?? [null]"
+                    :key="`${layout.cardId}:${bindingIndex}`"
+                    class="view-field-card-value"
+                  >
+                    {{ columnDisplayName(columnId ?? null) }}
+                  </p>
+                </div>
               </div>
             </template>
             <template
               v-else-if="
                 shouldRenderCardContent ||
-                (!isTemplateMode && layout.columnId !== null)
+                (!isTemplateMode && layout.columns.length > 0)
               "
             >
               <v-tooltip
@@ -1518,22 +1661,50 @@ function layoutToTemplateCard(
                 :class="{ 'hide-label': !shouldShowLabel(layout) }"
                 :style="cardContentStyle(layout)"
               >
-                <div
-                  v-if="shouldShowLabel(layout)"
-                  class="view-field-card-header"
-                >
-                  <span>{{ fieldLabelByLayout(layout) }}</span>
+                <div class="view-field-card-stack">
+                  <div
+                    v-for="entry in fieldEntriesByLayout(layout)"
+                    :key="entry.key"
+                    class="view-field-card-row"
+                  >
+                    <div
+                      v-if="shouldShowLabel(layout)"
+                      class="view-field-card-header"
+                    >
+                      <span>{{ entry.label }}</span>
+                    </div>
+                    <p class="view-field-card-value">
+                      {{ entry.value }}
+                    </p>
+                  </div>
+                  <p
+                    v-if="
+                      isTemplateMode &&
+                      !isTemplatePreviewActive &&
+                      fieldEntriesByLayout(layout).length === 0
+                    "
+                    class="view-field-card-value"
+                  >
+                    カード枠
+                  </p>
+                  <p
+                    v-else-if="
+                      isTemplateMode &&
+                      isTemplatePreviewActive &&
+                      fieldEntriesByLayout(layout).length === 0
+                    "
+                    class="view-field-card-value"
+                  >
+                    一時紐付けなし
+                  </p>
                 </div>
-                <p class="view-field-card-value">
-                  {{ fieldValueByLayout(layout) }}
-                </p>
               </div>
             </template>
             <template v-if="editMode && isSelected(layout.cardId)">
               <v-tooltip
                 v-for="handle in RESIZE_HANDLES"
                 :key="handle.direction"
-                :text="`${fieldLabelByLayout(layout)}を${handle.label}`"
+                :text="`${cardSummaryLabel(layout)}を${handle.label}`"
                 location="bottom"
               >
                 <template #activator="{ props: tooltipProps }">
@@ -1542,7 +1713,7 @@ function layoutToTemplateCard(
                     type="button"
                     class="view-field-resize-handle"
                     :class="`view-field-resize-handle-${handle.direction}`"
-                    :aria-label="`${fieldLabelByLayout(layout)}を${handle.label}`"
+                    :aria-label="`${cardSummaryLabel(layout)}を${handle.label}`"
                     @pointerdown.stop="
                       startResize(
                         $event,
@@ -1594,7 +1765,6 @@ function layoutToTemplateCard(
         :can-save-binding-draft="canSaveBindingDraft"
         :card-binding-label="cardBindingLabel"
         :column-display-name="columnDisplayName"
-        :has-duplicate-binding-columns="hasDuplicateBindingColumns"
         :has-unbound-template-for-table="hasUnboundTemplateForTable"
         :is-binding-card-selected="isBindingCardSelected"
         :record-template-items="recordTemplateItems"
@@ -1607,11 +1777,20 @@ function layoutToTemplateCard(
         @clear-record-template="clearRecordTemplate"
         @close-binding-editor="closeBindingEditor"
         @save-binding-draft="saveBindingDraft"
+        @add-binding-slot="addBindingSlot"
+        @remove-binding-slot="removeBindingSlot"
+        @move-binding-slot-up="
+          (cardId, index) => moveBindingSlot(cardId, index, -1)
+        "
+        @move-binding-slot-down="
+          (cardId, index) => moveBindingSlot(cardId, index, 1)
+        "
         @select-binding-card="selectBindingCard"
         @set-binding-draft="setBindingDraft"
       />
       <ViewFreeLayoutStyleInspector
         v-else-if="editMode"
+        :add-template-preview-binding-slot="addTemplatePreviewBindingSlot"
         :apply-background-color-mode="applyBackgroundColorModeWithPolicy"
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
         :apply-number-style-from-input="applyNumberStyleFromInput"
@@ -1631,6 +1810,13 @@ function layoutToTemplateCard(
         :is-template-preview-active="isTemplatePreviewActive"
         :is-template-preview-bindings-open="isTemplatePreviewBindingsOpen"
         :is-transparent-background-selected="isTransparentBackgroundSelected"
+        :move-template-preview-binding-slot-down="
+          (cardId, index) => moveTemplatePreviewBindingSlot(cardId, index, 1)
+        "
+        :move-template-preview-binding-slot-up="
+          (cardId, index) => moveTemplatePreviewBindingSlot(cardId, index, -1)
+        "
+        :remove-template-preview-binding-slot="removeTemplatePreviewBindingSlot"
         :reset-record-overrides="resetRecordOverrides"
         :reset-selected-card-override="resetSelectedCardOverride"
         :reset-selected-style="resetSelectedStyle"

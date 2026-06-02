@@ -4,11 +4,10 @@ import type { ViewLayoutCardItem, ViewSelection } from "../../../types";
 defineProps<{
   bindableTemplateLayouts: ViewLayoutCardItem[];
   bindingColumnItems: Array<{ title: string; value: number }>;
-  bindingDraft: Record<number, number | null>;
+  bindingDraft: Record<number, Array<number | null>>;
   canSaveBindingDraft: boolean;
   cardBindingLabel: (layout: ViewLayoutCardItem, index: number) => string;
   columnDisplayName: (columnId: number | null) => string;
-  hasDuplicateBindingColumns: boolean;
   hasUnboundTemplateForTable: boolean;
   isBindingCardSelected: (cardId: number) => boolean;
   recordTemplateItems: Array<{ title: string; value: number | null }>;
@@ -25,7 +24,11 @@ const emit = defineEmits<{
   "close-binding-editor": [];
   "save-binding-draft": [];
   "select-binding-card": [number];
-  "set-binding-draft": [number, number | null];
+  "set-binding-draft": [number, number, number | null];
+  "add-binding-slot": [number];
+  "remove-binding-slot": [number, number];
+  "move-binding-slot-up": [number, number];
+  "move-binding-slot-down": [number, number];
 }>();
 </script>
 
@@ -96,12 +99,14 @@ const emit = defineEmits<{
         </v-btn>
       </div>
     </div>
+
     <div class="view-binding-setup-copy">
-      <strong>カードごとの表示項目</strong>
+      <strong>カードごとの表示カラム</strong>
       <p>
-        カードを選ぶと、キャンバス上の対応する位置を強調します。未使用にしたいカードは未選択のまま保存できます。
+        1枚のカードに複数のカラムを追加できます。上から順にカード内へ縦積みで表示されます。
       </p>
     </div>
+
     <div class="view-binding-list">
       <v-card
         v-for="(layout, index) in bindableTemplateLayouts"
@@ -115,40 +120,91 @@ const emit = defineEmits<{
         @click="emit('select-binding-card', layout.cardId)"
         @focusin="emit('select-binding-card', layout.cardId)"
       >
-        <div>
+        <div class="view-binding-card-header">
           <strong>{{ cardBindingLabel(layout, index) }}</strong>
+          <v-btn
+            size="x-small"
+            variant="text"
+            prepend-icon="mdi-plus"
+            @click.stop="emit('add-binding-slot', layout.cardId)"
+          >
+            行を追加
+          </v-btn>
         </div>
-        <v-select
-          :items="bindingColumnItems"
-          :model-value="bindingDraft[layout.cardId] ?? null"
-          clearable
-          density="compact"
-          hide-details
-          item-title="title"
-          item-value="value"
-          label="表示カラム"
-          variant="outlined"
-          @click.stop
-          @focusin.stop
-          @pointerdown.stop
-          @update:model-value="
-            emit(
-              'set-binding-draft',
-              layout.cardId,
-              typeof $event === 'number' ? $event : null
-            )
-          "
-        />
+
+        <div class="view-binding-slot-list">
+          <div
+            v-for="(columnId, bindingIndex) in bindingDraft[layout.cardId] ?? [
+              null
+            ]"
+            :key="`${layout.cardId}:${bindingIndex}`"
+            class="view-binding-slot"
+          >
+            <div class="view-binding-slot-meta">
+              <span>{{ bindingIndex + 1 }} 行目</span>
+              <small>{{ columnDisplayName(columnId ?? null) }}</small>
+            </div>
+            <div class="view-binding-slot-controls">
+              <v-select
+                :items="bindingColumnItems"
+                :model-value="columnId ?? null"
+                clearable
+                density="compact"
+                hide-details
+                item-title="title"
+                item-value="value"
+                label="表示カラム"
+                variant="outlined"
+                @click.stop
+                @focusin.stop
+                @pointerdown.stop
+                @update:model-value="
+                  emit(
+                    'set-binding-draft',
+                    layout.cardId,
+                    bindingIndex,
+                    typeof $event === 'number' ? $event : null
+                  )
+                "
+              />
+              <div class="view-binding-slot-actions">
+                <v-btn
+                  icon="mdi-chevron-up"
+                  size="x-small"
+                  variant="text"
+                  :disabled="bindingIndex === 0"
+                  @click.stop="
+                    emit('move-binding-slot-up', layout.cardId, bindingIndex)
+                  "
+                />
+                <v-btn
+                  icon="mdi-chevron-down"
+                  size="x-small"
+                  variant="text"
+                  :disabled="
+                    bindingIndex >=
+                    (bindingDraft[layout.cardId]?.length ?? 1) - 1
+                  "
+                  @click.stop="
+                    emit('move-binding-slot-down', layout.cardId, bindingIndex)
+                  "
+                />
+                <v-btn
+                  icon="mdi-close"
+                  size="x-small"
+                  variant="text"
+                  :disabled="(bindingDraft[layout.cardId]?.length ?? 1) <= 1"
+                  @click.stop="
+                    emit('remove-binding-slot', layout.cardId, bindingIndex)
+                  "
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </v-card>
     </div>
-    <v-alert
-      v-if="hasDuplicateBindingColumns"
-      type="warning"
-      variant="tonal"
-      density="compact"
-    >
-      同じカラムを複数のカードへ紐付けることはできません。
-    </v-alert>
+
     <div class="view-binding-actions">
       <v-btn
         v-if="!hasUnboundTemplateForTable"

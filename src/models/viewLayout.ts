@@ -1,7 +1,7 @@
 export interface ViewLayoutCardItem {
   tableId: number;
   cardId: number;
-  columnId: number | null;
+  columns: ViewLayoutCardColumnBinding[];
   presetId?: string | null;
   label?: string | null;
   x: number;
@@ -28,6 +28,7 @@ export interface ViewLayoutCardItem {
 export interface ViewLayoutCardColumnBinding {
   cardId: number;
   columnId: number;
+  sortOrder: number;
 }
 
 export interface ViewLayoutTemplate {
@@ -81,7 +82,6 @@ export interface SaveViewLayoutCardOverridesPayload {
   recordId: number;
   items: Array<{
     cardId: number;
-    columnId: number | null;
     presetId?: string | null;
     x: number;
     y: number;

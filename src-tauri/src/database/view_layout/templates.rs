@@ -182,8 +182,8 @@ impl Db {
             self.conn.execute(
                 "
                 INSERT OR IGNORE INTO view_layout_card_column_bindings
-                  (template_id, table_id, card_id, column_id, updated_at)
-                SELECT ?, table_id, ?, column_id, CURRENT_TIMESTAMP
+                  (template_id, table_id, card_id, sort_order, column_id, updated_at)
+                SELECT ?, table_id, ?, sort_order, column_id, CURRENT_TIMESTAMP
                 FROM view_layout_card_column_bindings
                 WHERE template_id = ? AND card_id = ?
                 ",

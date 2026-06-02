@@ -266,19 +266,20 @@ impl Db {
         self.get_table_summary(payload.table_id)?;
         let mut stmt = self.conn.prepare(
             "
-            SELECT binding.card_id, binding.column_id
+            SELECT binding.card_id, binding.column_id, binding.sort_order
             FROM view_layout_card_column_bindings binding
             JOIN view_layout_template_cards card
               ON card.template_id = binding.template_id
              AND card.card_id = binding.card_id
             WHERE binding.template_id = ? AND binding.table_id = ?
-            ORDER BY card.sort_order, binding.card_id
+            ORDER BY card.sort_order, binding.card_id, binding.sort_order
             ",
         )?;
         let rows = stmt.query_map(params![payload.template_id, payload.table_id], |row| {
             Ok(ViewLayoutCardColumnBinding {
                 card_id: row.get(0)?,
                 column_id: row.get(1)?,
+                sort_order: row.get(2)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
@@ -404,13 +405,14 @@ impl Db {
             tx.execute(
                 "
                 INSERT INTO view_layout_card_column_bindings
-                  (template_id, table_id, card_id, column_id, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  (template_id, table_id, card_id, sort_order, column_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ",
                 params![
                     payload.template_id,
                     payload.table_id,
                     binding.card_id,
+                    binding.sort_order,
                     binding.column_id
                 ],
             )?;

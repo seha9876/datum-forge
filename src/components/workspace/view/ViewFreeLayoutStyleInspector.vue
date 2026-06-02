@@ -9,6 +9,7 @@ import type {
 } from "../../../types";
 
 defineProps<{
+  addTemplatePreviewBindingSlot: (cardId: number) => void;
   applyBackgroundColorMode: (mode: "color" | "transparent") => void;
   applyFontWeightFromCheckbox: (value: boolean | null) => void;
   applyNumberStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
@@ -28,19 +29,26 @@ defineProps<{
   isTemplatePreviewActive: boolean;
   isTemplatePreviewBindingsOpen: boolean;
   isTransparentBackgroundSelected: () => boolean;
+  moveTemplatePreviewBindingSlotDown: (cardId: number, index: number) => void;
+  moveTemplatePreviewBindingSlotUp: (cardId: number, index: number) => void;
+  removeTemplatePreviewBindingSlot: (cardId: number, index: number) => void;
   resetRecordOverrides: () => void;
   resetSelectedCardOverride: () => void;
   resetSelectedStyle: () => void;
   selectedCardHasOverride: boolean;
   selectedLayouts: ViewLayoutCardItem[];
   selectedPresetId: string | null | "";
-  setTemplatePreviewBinding: (cardId: number, columnId: unknown) => void;
+  setTemplatePreviewBinding: (
+    cardId: number,
+    index: number,
+    columnId: unknown
+  ) => void;
   styleBooleanInputValue: (key: LayoutStyleKey) => boolean;
   styleInputValue: (key: LayoutStyleKey) => string;
   styleInspectorValues: Record<LayoutStyleKey, LayoutStyleValue | "">;
   styleNumberInputValue: (key: LayoutStyleKey) => number | "";
   templateCards: ViewLayoutTemplateCard[];
-  templatePreviewBindingDraft: Record<number, number | null>;
+  templatePreviewBindingDraft: Record<number, Array<number | null>>;
   templatePreviewBoundCount: number;
   themeColorInputValue: (tokenName: string) => string;
   toggleTemplatePreviewBindings: () => void;
@@ -59,7 +67,7 @@ defineProps<{
           <strong>一時紐付け</strong>
           <span>
             {{ templatePreviewBoundCount }} / {{ templateCards.length }}
-            紐付け済み・保存されません
+            カードで設定済み
           </span>
         </div>
         <v-tooltip
@@ -96,36 +104,111 @@ defineProps<{
         class="view-template-preview-binding-body"
       >
         <p class="view-empty-hint mb-0">
-          プレビュー中だけ、カードに表示するカラムを選べます。
+          プレビュー用の表示カラムです。カードごとに複数行を仮設定できます。
         </p>
         <div class="view-template-preview-binding-list">
-          <label
-            v-for="(layout, index) in draftLayouts"
+          <div
+            v-for="(layout, layoutIndex) in draftLayouts"
             :key="layout.cardId"
             class="view-template-preview-binding"
           >
-            <span>{{ cardBindingLabel(layout, index) }}</span>
-            <v-select
-              :items="bindingColumnItems"
-              :model-value="templatePreviewBindingDraft[layout.cardId] ?? null"
-              item-title="title"
-              item-value="value"
-              label="表示カラム"
-              variant="outlined"
-              density="compact"
-              clearable
-              hide-details
-              @update:model-value="
-                setTemplatePreviewBinding(layout.cardId, $event)
-              "
-            />
-          </label>
+            <div class="view-binding-card-header">
+              <span>{{ cardBindingLabel(layout, layoutIndex) }}</span>
+              <v-btn
+                size="x-small"
+                variant="text"
+                prepend-icon="mdi-plus"
+                @click="addTemplatePreviewBindingSlot(layout.cardId)"
+              >
+                行を追加
+              </v-btn>
+            </div>
+            <div class="view-binding-slot-list">
+              <div
+                v-for="(columnId, bindingIndex) in templatePreviewBindingDraft[
+                  layout.cardId
+                ] ?? [null]"
+                :key="`${layout.cardId}:${bindingIndex}`"
+                class="view-binding-slot"
+              >
+                <div class="view-binding-slot-meta">
+                  <span>{{ bindingIndex + 1 }} 行目</span>
+                </div>
+                <div class="view-binding-slot-controls">
+                  <v-select
+                    :items="bindingColumnItems"
+                    :model-value="columnId ?? null"
+                    item-title="title"
+                    item-value="value"
+                    label="表示カラム"
+                    variant="outlined"
+                    density="compact"
+                    clearable
+                    hide-details
+                    @update:model-value="
+                      setTemplatePreviewBinding(
+                        layout.cardId,
+                        bindingIndex,
+                        $event
+                      )
+                    "
+                  />
+                  <div class="view-binding-slot-actions">
+                    <v-btn
+                      icon="mdi-chevron-up"
+                      size="x-small"
+                      variant="text"
+                      :disabled="bindingIndex === 0"
+                      @click="
+                        moveTemplatePreviewBindingSlotUp(
+                          layout.cardId,
+                          bindingIndex
+                        )
+                      "
+                    />
+                    <v-btn
+                      icon="mdi-chevron-down"
+                      size="x-small"
+                      variant="text"
+                      :disabled="
+                        bindingIndex >=
+                        (templatePreviewBindingDraft[layout.cardId]?.length ??
+                          1) -
+                          1
+                      "
+                      @click="
+                        moveTemplatePreviewBindingSlotDown(
+                          layout.cardId,
+                          bindingIndex
+                        )
+                      "
+                    />
+                    <v-btn
+                      icon="mdi-close"
+                      size="x-small"
+                      variant="text"
+                      :disabled="
+                        (templatePreviewBindingDraft[layout.cardId]?.length ??
+                          1) <= 1
+                      "
+                      @click="
+                        removeTemplatePreviewBindingSlot(
+                          layout.cardId,
+                          bindingIndex
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
     <div class="view-style-inspector-heading">
       <strong>スタイル</strong>
-      <span>{{ selectedLayouts.length }}件</span>
+      <span>{{ selectedLayouts.length }}枚</span>
     </div>
 
     <p v-if="selectedLayouts.length === 0" class="view-empty-hint">
@@ -190,7 +273,7 @@ defineProps<{
           max="48"
           step="1"
           :value="styleNumberInputValue('fontSize')"
-          placeholder="混在"
+          placeholder="既定"
           @change="applyNumberStyleFromInput('fontSize', $event)"
         />
       </label>
@@ -205,7 +288,7 @@ defineProps<{
               max="40"
               step="1"
               :value="styleNumberInputValue('paddingTop')"
-              placeholder="混在"
+              placeholder="既定"
               @change="applyNumberStyleFromInput('paddingTop', $event)"
             />
           </label>
@@ -217,7 +300,7 @@ defineProps<{
               max="40"
               step="1"
               :value="styleNumberInputValue('paddingRight')"
-              placeholder="混在"
+              placeholder="既定"
               @change="applyNumberStyleFromInput('paddingRight', $event)"
             />
           </label>
@@ -229,7 +312,7 @@ defineProps<{
               max="40"
               step="1"
               :value="styleNumberInputValue('paddingBottom')"
-              placeholder="混在"
+              placeholder="既定"
               @change="applyNumberStyleFromInput('paddingBottom', $event)"
             />
           </label>
@@ -241,7 +324,7 @@ defineProps<{
               max="40"
               step="1"
               :value="styleNumberInputValue('paddingLeft')"
-              placeholder="混在"
+              placeholder="既定"
               @change="applyNumberStyleFromInput('paddingLeft', $event)"
             />
           </label>
@@ -255,7 +338,7 @@ defineProps<{
           max="40"
           step="1"
           :value="styleNumberInputValue('borderRadius')"
-          placeholder="混在"
+          placeholder="既定"
           @change="applyNumberStyleFromInput('borderRadius', $event)"
         />
       </label>
@@ -330,7 +413,7 @@ defineProps<{
           :disabled="!hasRecordOverrides"
           @click="resetRecordOverrides"
         >
-          個別差分を全解除
+          個別上書きを全解除
         </button>
       </div>
       <button

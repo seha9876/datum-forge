@@ -59,7 +59,6 @@ export function toLayoutPayloadItems(
 ): SaveViewLayoutCardOverridesPayload["items"] {
   return items.map((item) => ({
     cardId: item.cardId,
-    columnId: item.columnId,
     presetId: item.presetId,
     x: item.x,
     y: item.y,

@@ -231,7 +231,7 @@ pub struct RecordTagBundle {
 pub struct ViewLayoutCardItem {
     pub table_id: i64,
     pub card_id: i64,
-    pub column_id: Option<i64>,
+    pub columns: Vec<ViewLayoutCardColumnBinding>,
     pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
@@ -765,11 +765,12 @@ pub struct SaveViewLayoutTemplateCardsPayload {
     pub cards: Vec<ViewLayoutTemplateCard>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutCardColumnBinding {
     pub card_id: i64,
     pub column_id: i64,
+    pub sort_order: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -777,6 +778,7 @@ pub struct ViewLayoutCardColumnBinding {
 pub struct ViewLayoutCardColumnBindingPayload {
     pub card_id: i64,
     pub column_id: i64,
+    pub sort_order: i64,
 }
 
 #[derive(Debug, Deserialize)]
