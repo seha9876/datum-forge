@@ -16,6 +16,8 @@ defineProps<{
   applySelectedStyle: (key: LayoutStyleKey, value: LayoutStyleValue) => void;
   applyShowLabelFromCheckbox: (value: boolean | null) => void;
   applyStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
+  backgroundColorDisabled: boolean;
+  backgroundColorDisabledReason: string;
   backgroundColorInputValue: () => string;
   bindingColumnItems: Array<{ title: string; value: number }>;
   cardBindingLabel: (layout: ViewLayoutCardItem, index: number) => string;
@@ -150,6 +152,7 @@ defineProps<{
           <input
             type="color"
             :class="{ muted: isTransparentBackgroundSelected() }"
+            :disabled="backgroundColorDisabled"
             :value="backgroundColorInputValue()"
             @input="applyStyleFromInput('backgroundColor', $event)"
           />
@@ -157,11 +160,15 @@ defineProps<{
             type="button"
             class="view-background-transparent-button"
             :class="{ active: isTransparentBackgroundSelected() }"
+            :disabled="backgroundColorDisabled"
             @click="applyBackgroundColorMode('transparent')"
           >
             透明
           </button>
         </div>
+        <small v-if="backgroundColorDisabled" class="view-empty-hint">
+          {{ backgroundColorDisabledReason }}
+        </small>
       </label>
       <label class="view-style-control">
         <span>文字色</span>

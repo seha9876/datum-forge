@@ -1,5 +1,6 @@
 import { computed } from "vue";
 
+import { getCardPresetBackgroundColorMode } from "./cardPresets/registry";
 import {
   DEFAULT_CARD_STYLE,
   type InputLikeEvent,
@@ -27,6 +28,12 @@ export function useFreeLayoutStyleEditing(
   selectedLayouts: ComputedRef<ViewLayoutCardItem[]>,
   updateLayouts: UpdateLayouts
 ) {
+  function canOverrideBackgroundColor(layout: ViewLayoutCardItem) {
+    return (
+      getCardPresetBackgroundColorMode(layout.presetId) === "replace-preset"
+    );
+  }
+
   function layoutStyleValue(
     layout: ViewLayoutCardItem,
     key: LayoutStyleKey
@@ -70,9 +77,12 @@ export function useFreeLayoutStyleEditing(
   function cardStyle(layout: ViewLayoutCardItem): CSSProperties {
     const backgroundColor = layoutStyleValue(layout, "backgroundColor");
     const textColor = layoutStyleValue(layout, "textColor");
+    const canApplyBackgroundColor = canOverrideBackgroundColor(layout);
     return {
       "--card-background":
-        backgroundColor && backgroundColor !== "transparent"
+        canApplyBackgroundColor &&
+        backgroundColor &&
+        backgroundColor !== "transparent"
           ? String(backgroundColor)
           : undefined,
       "--card-border-radius": `${layoutStyleValue(layout, "borderRadius")}px`,
@@ -85,7 +95,9 @@ export function useFreeLayoutStyleEditing(
       "--card-text-align": String(layoutStyleValue(layout, "textAlign")),
       "--card-text-color": textColor ? String(textColor) : undefined,
       backgroundColor:
-        backgroundColor === "transparent" ? "transparent" : undefined,
+        canApplyBackgroundColor && backgroundColor === "transparent"
+          ? "transparent"
+          : undefined,
       borderRadius: "var(--card-border-radius)",
       color: "var(--card-text-color, inherit)",
       fontSize: "var(--card-font-size)",
@@ -155,7 +167,10 @@ export function useFreeLayoutStyleEditing(
   }
 
   function hasTransparentBackground(layout: ViewLayoutCardItem) {
-    return layoutStyleValue(layout, "backgroundColor") === "transparent";
+    return (
+      canOverrideBackgroundColor(layout) &&
+      layoutStyleValue(layout, "backgroundColor") === "transparent"
+    );
   }
 
   function applySelectedStyle(key: LayoutStyleKey, value: LayoutStyleValue) {
@@ -263,6 +278,7 @@ export function useFreeLayoutStyleEditing(
     hasTransparentBackground,
     isTransparentBackgroundSelected,
     layoutStyleValue,
+    canOverrideBackgroundColor,
     resetSelectedStyle,
     styleBooleanInputValue,
     styleInputValue,

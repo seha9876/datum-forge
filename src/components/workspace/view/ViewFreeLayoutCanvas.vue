@@ -25,6 +25,7 @@ import type {
   CanvasElement,
   InteractionState,
   KeyboardLikeEvent,
+  LayoutStyleKey,
   PanDrag,
   PointerLikeEvent,
   PointerTarget,
@@ -192,6 +193,16 @@ const selectedPresetId = computed(() => {
   );
   return hasMixedValues ? "" : firstPresetId;
 });
+const backgroundColorEditingDisabled = computed(
+  () =>
+    isTemplateMode.value &&
+    selectedLayouts.value.some((layout) => !canOverrideBackgroundColor(layout))
+);
+const backgroundColorDisabledReason = computed(() =>
+  backgroundColorEditingDisabled.value
+    ? "このプリセットでは背景色を変更できません。"
+    : ""
+);
 const bindableTemplateLayouts = computed(() =>
   isTemplateMode.value ? [] : draftLayouts.value.filter((item) => item.visible)
 );
@@ -839,6 +850,7 @@ const {
   backgroundColorInputValue,
   cardContentStyle,
   cardStyle,
+  canOverrideBackgroundColor,
   hasTransparentBackground,
   isTransparentBackgroundSelected,
   layoutStyleValue,
@@ -849,6 +861,22 @@ const {
   styleNumberInputValue,
   themeColorInputValue
 } = useFreeLayoutStyleEditing(selectedLayouts, updateLayouts);
+
+function applyBackgroundColorModeWithPolicy(mode: "color" | "transparent") {
+  if (backgroundColorEditingDisabled.value) {
+    return;
+  }
+
+  applyBackgroundColorMode(mode);
+}
+
+function applyStyleFromInputWithPolicy(key: LayoutStyleKey, event: unknown) {
+  if (key === "backgroundColor" && backgroundColorEditingDisabled.value) {
+    return;
+  }
+
+  applyStyleFromInput(key, event);
+}
 
 function pointerTarget(event: PointerLikeEvent) {
   return event.currentTarget as PointerTarget | null;
@@ -1584,13 +1612,15 @@ function layoutToTemplateCard(
       />
       <ViewFreeLayoutStyleInspector
         v-else-if="editMode"
-        :apply-background-color-mode="applyBackgroundColorMode"
+        :apply-background-color-mode="applyBackgroundColorModeWithPolicy"
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
         :apply-number-style-from-input="applyNumberStyleFromInput"
         :apply-preset-id="applyPresetId"
         :apply-selected-style="applySelectedStyle"
         :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
-        :apply-style-from-input="applyStyleFromInput"
+        :apply-style-from-input="applyStyleFromInputWithPolicy"
+        :background-color-disabled="backgroundColorEditingDisabled"
+        :background-color-disabled-reason="backgroundColorDisabledReason"
         :background-color-input-value="backgroundColorInputValue"
         :binding-column-items="bindingColumnItems"
         :card-binding-label="cardBindingLabel"
