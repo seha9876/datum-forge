@@ -2,6 +2,7 @@ export interface ViewLayoutCardItem {
   tableId: number;
   cardId: number;
   columnId: number | null;
+  presetId?: string | null;
   label?: string | null;
   x: number;
   y: number;
@@ -40,6 +41,7 @@ export interface ViewLayoutTemplate {
 
 export interface ViewLayoutTemplateCard {
   cardId: number;
+  presetId?: string | null;
   x: number;
   y: number;
   width: number;
@@ -80,6 +82,7 @@ export interface SaveViewLayoutCardOverridesPayload {
   items: Array<{
     cardId: number;
     columnId: number | null;
+    presetId?: string | null;
     x: number;
     y: number;
     width: number;

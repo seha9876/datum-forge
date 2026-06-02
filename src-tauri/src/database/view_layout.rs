@@ -324,6 +324,7 @@ impl Db {
                 payload.template_id,
                 SaveViewLayoutCardItem {
                     card_id: card.card_id,
+                    preset_id: card.preset_id,
                     x: card.x,
                     y: card.y,
                     width: card.width,
@@ -441,6 +442,7 @@ impl Db {
             else {
                 continue;
             };
+            let _ = &item.preset_id;
             if item.card_id <= 0 {
                 continue;
             }

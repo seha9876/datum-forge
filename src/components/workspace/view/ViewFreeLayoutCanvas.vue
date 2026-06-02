@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
+import { isKnownCardPresetId, listCardPresets } from "./cardPresets/registry";
 import { useFreeLayoutStyleEditing } from "./useFreeLayoutStyleEditing";
 import ViewFreeLayoutBindingPanel from "./ViewFreeLayoutBindingPanel.vue";
 import {
@@ -172,6 +173,25 @@ const visibleLayouts = computed(() =>
 const selectedLayouts = computed(() =>
   visibleLayouts.value.filter((layout) => isSelected(layout.cardId))
 );
+const cardPresetItems = computed(() => [
+  { title: "標準", value: null },
+  ...listCardPresets().map((preset) => ({
+    title: preset.label,
+    value: preset.id
+  }))
+]);
+const selectedPresetId = computed(() => {
+  const [firstLayout, ...restLayouts] = selectedLayouts.value;
+  if (!firstLayout) {
+    return "";
+  }
+
+  const firstPresetId = firstLayout.presetId ?? null;
+  const hasMixedValues = restLayouts.some(
+    (layout) => (layout.presetId ?? null) !== firstPresetId
+  );
+  return hasMixedValues ? "" : firstPresetId;
+});
 const bindableTemplateLayouts = computed(() =>
   isTemplateMode.value ? [] : draftLayouts.value.filter((item) => item.visible)
 );
@@ -665,6 +685,28 @@ function saveBindingDraft() {
 
 function shouldShowLabel(layout: ViewLayoutCardItem) {
   return layoutStyleValue(layout, "showLabel") !== false;
+}
+
+function normalizedPresetId(layout: { presetId?: string | null }) {
+  return isKnownCardPresetId(layout.presetId)
+    ? (layout.presetId ?? null)
+    : null;
+}
+
+function applyPresetId(value: string | null) {
+  if (!isTemplateMode.value || selectedLayouts.value.length === 0) {
+    return;
+  }
+
+  const presetId =
+    typeof value === "string" && isKnownCardPresetId(value) ? value : null;
+  updateLayouts(
+    selectedLayouts.value.map((layout) => ({
+      ...layout,
+      presetId
+    })),
+    true
+  );
 }
 
 function canvasBounds() {
@@ -1204,6 +1246,7 @@ function addTemplateCard() {
     tableId: 0,
     cardId,
     columnId: null,
+    presetId: null,
     label: null,
     x: 120 + offset,
     y: 120 + offset,
@@ -1245,6 +1288,7 @@ function templateCardToLayout(
     tableId: 0,
     cardId: card.cardId,
     columnId: null,
+    presetId: normalizedPresetId(card),
     label: null,
     x: card.x,
     y: card.y,
@@ -1273,6 +1317,7 @@ function layoutToTemplateCard(
 ): ViewLayoutTemplateCard {
   return {
     cardId: layout.cardId,
+    presetId: normalizedPresetId(layout),
     label: null,
     x: layout.x,
     y: layout.y,
@@ -1372,6 +1417,7 @@ function layoutToTemplateCard(
                 !editMode &&
                 !isBindingEditorVisible
             }"
+            :data-card-preset="normalizedPresetId(layout) ?? undefined"
             :style="cardStyle(layout)"
             @pointerdown.stop="
               isBindingEditorVisible
@@ -1541,12 +1587,14 @@ function layoutToTemplateCard(
         :apply-background-color-mode="applyBackgroundColorMode"
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
         :apply-number-style-from-input="applyNumberStyleFromInput"
+        :apply-preset-id="applyPresetId"
         :apply-selected-style="applySelectedStyle"
         :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
         :apply-style-from-input="applyStyleFromInput"
         :background-color-input-value="backgroundColorInputValue"
         :binding-column-items="bindingColumnItems"
         :card-binding-label="cardBindingLabel"
+        :card-preset-items="cardPresetItems"
         :draft-layouts="draftLayouts"
         :has-record-overrides="hasRecordOverrides"
         :is-template-mode="isTemplateMode"
@@ -1558,6 +1606,7 @@ function layoutToTemplateCard(
         :reset-selected-style="resetSelectedStyle"
         :selected-card-has-override="selectedCardHasOverride"
         :selected-layouts="selectedLayouts"
+        :selected-preset-id="selectedPresetId"
         :set-template-preview-binding="setTemplatePreviewBinding"
         :style-boolean-input-value="styleBooleanInputValue"
         :style-input-value="styleInputValue"

@@ -15,6 +15,7 @@ impl Db {
             "
             SELECT
               card.card_id,
+              card.preset_id,
               card.x,
               card.y,
               card.width,
@@ -42,25 +43,26 @@ impl Db {
         let rows = stmt.query_map([template_id], |row| {
             Ok(ViewLayoutTemplateCard {
                 card_id: row.get(0)?,
-                x: row.get(1)?,
-                y: row.get(2)?,
-                width: row.get(3)?,
-                height: row.get(4)?,
-                visible: row.get::<_, i64>(5)? != 0,
-                label: row.get(6)?,
-                background_color: row.get(7)?,
-                text_color: row.get(8)?,
-                font_size: row.get(9)?,
-                text_direction: row.get(10)?,
-                font_weight: row.get(11)?,
-                text_align: row.get(12)?,
-                padding: row.get(13)?,
-                padding_top: row.get(14)?,
-                padding_right: row.get(15)?,
-                padding_bottom: row.get(16)?,
-                padding_left: row.get(17)?,
-                border_radius: row.get(18)?,
-                show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                preset_id: row.get(1)?,
+                x: row.get(2)?,
+                y: row.get(3)?,
+                width: row.get(4)?,
+                height: row.get(5)?,
+                visible: row.get::<_, i64>(6)? != 0,
+                label: row.get(7)?,
+                background_color: row.get(8)?,
+                text_color: row.get(9)?,
+                font_size: row.get(10)?,
+                text_direction: row.get(11)?,
+                font_weight: row.get(12)?,
+                text_align: row.get(13)?,
+                padding: row.get(14)?,
+                padding_top: row.get(15)?,
+                padding_right: row.get(16)?,
+                padding_bottom: row.get(17)?,
+                padding_left: row.get(18)?,
+                border_radius: row.get(19)?,
+                show_label: row.get::<_, Option<i64>>(20)?.map(|value| value != 0),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
@@ -93,13 +95,14 @@ impl Db {
             self.conn.execute(
                 "
                 INSERT INTO view_layout_template_cards (
-                  card_id, template_id, x, y, width, height, visible,
+                  card_id, template_id, preset_id, x, y, width, height, visible,
                   background_color, text_color, font_size, text_direction,
                   font_weight, text_align, padding, padding_top, padding_right,
                   padding_bottom, padding_left, border_radius, show_label,
                   sort_order, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(card_id) DO UPDATE SET
+                  preset_id = excluded.preset_id,
                   x = excluded.x,
                   y = excluded.y,
                   width = excluded.width,
@@ -124,6 +127,7 @@ impl Db {
                 params![
                     card_id,
                     template_id,
+                    item.preset_id,
                     item.x.max(0.0),
                     item.y.max(0.0),
                     item.width.max(80.0),
@@ -151,15 +155,16 @@ impl Db {
         self.conn.execute(
             "
             INSERT INTO view_layout_template_cards (
-              template_id, x, y, width, height, visible,
+              template_id, preset_id, x, y, width, height, visible,
               background_color, text_color, font_size, text_direction,
               font_weight, text_align, padding, padding_top, padding_right,
               padding_bottom, padding_left, border_radius, show_label,
               sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ",
             params![
                 template_id,
+                item.preset_id,
                 item.x.max(0.0),
                 item.y.max(0.0),
                 item.width.max(80.0),
@@ -192,7 +197,7 @@ impl Db {
         self.conn
             .query_row(
                 "
-                SELECT card_id, x, y, width, height, visible,
+                SELECT card_id, preset_id, x, y, width, height, visible,
                        background_color, text_color, font_size, text_direction,
                        font_weight, text_align, padding, padding_top, padding_right,
                        padding_bottom, padding_left, border_radius, show_label
@@ -203,24 +208,25 @@ impl Db {
                 |row| {
                     Ok(SaveViewLayoutCardItem {
                         card_id: row.get(0)?,
-                        x: row.get(1)?,
-                        y: row.get(2)?,
-                        width: row.get(3)?,
-                        height: row.get(4)?,
-                        visible: row.get::<_, i64>(5)? != 0,
-                        background_color: row.get(6)?,
-                        text_color: row.get(7)?,
-                        font_size: row.get(8)?,
-                        text_direction: row.get(9)?,
-                        font_weight: row.get(10)?,
-                        text_align: row.get(11)?,
-                        padding: row.get(12)?,
-                        padding_top: row.get(13)?,
-                        padding_right: row.get(14)?,
-                        padding_bottom: row.get(15)?,
-                        padding_left: row.get(16)?,
-                        border_radius: row.get(17)?,
-                        show_label: row.get::<_, Option<i64>>(18)?.map(|value| value != 0),
+                        preset_id: row.get(1)?,
+                        x: row.get(2)?,
+                        y: row.get(3)?,
+                        width: row.get(4)?,
+                        height: row.get(5)?,
+                        visible: row.get::<_, i64>(6)? != 0,
+                        background_color: row.get(7)?,
+                        text_color: row.get(8)?,
+                        font_size: row.get(9)?,
+                        text_direction: row.get(10)?,
+                        font_weight: row.get(11)?,
+                        text_align: row.get(12)?,
+                        padding: row.get(13)?,
+                        padding_top: row.get(14)?,
+                        padding_right: row.get(15)?,
+                        padding_bottom: row.get(16)?,
+                        padding_left: row.get(17)?,
+                        border_radius: row.get(18)?,
+                        show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
                     })
                 },
             )

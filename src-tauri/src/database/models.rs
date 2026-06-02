@@ -232,6 +232,7 @@ pub struct ViewLayoutCardItem {
     pub table_id: i64,
     pub card_id: i64,
     pub column_id: Option<i64>,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -268,6 +269,7 @@ pub struct ViewLayoutTemplate {
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutTemplateCard {
     pub card_id: i64,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -652,6 +654,7 @@ pub struct DetachRecordTagPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SaveViewLayoutCardItem {
     pub card_id: i64,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,

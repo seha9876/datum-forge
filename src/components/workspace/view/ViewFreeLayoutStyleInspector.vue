@@ -12,12 +12,14 @@ defineProps<{
   applyBackgroundColorMode: (mode: "color" | "transparent") => void;
   applyFontWeightFromCheckbox: (value: boolean | null) => void;
   applyNumberStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
+  applyPresetId: (presetId: string | null) => void;
   applySelectedStyle: (key: LayoutStyleKey, value: LayoutStyleValue) => void;
   applyShowLabelFromCheckbox: (value: boolean | null) => void;
   applyStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
   backgroundColorInputValue: () => string;
   bindingColumnItems: Array<{ title: string; value: number }>;
   cardBindingLabel: (layout: ViewLayoutCardItem, index: number) => string;
+  cardPresetItems: Array<{ title: string; value: string | null }>;
   draftLayouts: ViewLayoutCardItem[];
   hasRecordOverrides: boolean;
   isTemplateMode: boolean;
@@ -29,6 +31,7 @@ defineProps<{
   resetSelectedStyle: () => void;
   selectedCardHasOverride: boolean;
   selectedLayouts: ViewLayoutCardItem[];
+  selectedPresetId: string | null | "";
   setTemplatePreviewBinding: (cardId: number, columnId: unknown) => void;
   styleBooleanInputValue: (key: LayoutStyleKey) => boolean;
   styleInputValue: (key: LayoutStyleKey) => string;
@@ -127,6 +130,20 @@ defineProps<{
       カードを選択してください。
     </p>
     <div v-else class="view-style-controls">
+      <label v-if="isTemplateMode" class="view-style-control">
+        <span>プリセット</span>
+        <v-select
+          :items="cardPresetItems"
+          :model-value="selectedPresetId || null"
+          item-title="title"
+          item-value="value"
+          label="カード見た目"
+          variant="outlined"
+          density="compact"
+          hide-details
+          @update:model-value="applyPresetId"
+        />
+      </label>
       <label class="view-style-control view-background-control">
         <span>背景色</span>
         <div class="view-background-row">

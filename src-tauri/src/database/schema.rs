@@ -171,6 +171,7 @@ impl Db {
             CREATE TABLE IF NOT EXISTS view_layout_template_cards (
               card_id INTEGER PRIMARY KEY AUTOINCREMENT,
               template_id INTEGER NOT NULL,
+              preset_id TEXT,
               x REAL NOT NULL,
               y REAL NOT NULL,
               width REAL NOT NULL,
@@ -240,6 +241,7 @@ impl Db {
             ",
         )?;
         self.migrate_record_tag_group_links()?;
+        self.migrate_view_layout_template_card_preset_id()?;
         Ok(())
     }
 
@@ -253,6 +255,25 @@ impl Db {
             ",
             [],
         )?;
+        Ok(())
+    }
+
+    fn migrate_view_layout_template_card_preset_id(&self) -> Result<(), DbError> {
+        let has_preset_id = self
+            .conn
+            .prepare("PRAGMA table_info(view_layout_template_cards)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .any(|column_name| column_name == "preset_id");
+
+        if !has_preset_id {
+            self.conn.execute(
+                "ALTER TABLE view_layout_template_cards ADD COLUMN preset_id TEXT",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 }
