@@ -110,6 +110,9 @@ const formattedWarnings = computed(() =>
 const formattedErrors = computed(() =>
   formatImportMessages(preview.value?.errors ?? [])
 );
+const previewChangeCount = computed(
+  () => (preview.value?.insertedCount ?? 0) + (preview.value?.updatedCount ?? 0)
+);
 
 watch(
   () =>
@@ -359,7 +362,8 @@ async function handleImport() {
               </v-chip>
             </div>
             <p class="text-medium-emphasis">
-              取り込み予定件数: {{ preview.totalRows }} 件。先頭
+              取り込み対象: {{ preview.totalRows }} 件。追加・更新予定
+              {{ previewChangeCount }} 件のうち、先頭
               {{ preview.previewRows.length }} 件を表示しています。
             </p>
           </section>
@@ -420,7 +424,15 @@ async function handleImport() {
 
           <section v-if="preview" class="table-import-section">
             <h3>プレビュー</h3>
-            <div class="table-import-preview-table-wrap">
+            <v-alert
+              v-if="preview.previewRows.length === 0"
+              type="info"
+              variant="tonal"
+              density="compact"
+            >
+              追加・更新予定の行はありません。
+            </v-alert>
+            <div v-else class="table-import-preview-table-wrap">
               <v-table density="compact" class="table-import-preview-table">
                 <thead>
                   <tr>
