@@ -46,6 +46,20 @@ import type {
   ViewTableSection
 } from "../../../types";
 import type { CSSProperties } from "vue";
+
+type TemplateSlotListItem = {
+  autoName: string;
+  cardId: number;
+  isBound: boolean;
+  label: string;
+  slotId: number;
+  statusLabel: string;
+};
+
+type SelectedTemplateSlotKey = {
+  cardId: number;
+  slotId: number;
+};
 const props = withDefaults(
   defineProps<{
     detail: TableDetail | null;
@@ -108,6 +122,7 @@ const isSpacePressed = ref(false);
 const isBindingEditorOpen = ref(false);
 const bindingDraft = ref<Record<number, Array<number | null>>>({});
 const selectedBindingCardId = ref<number | null>(null);
+const selectedTemplateSlotKey = ref<SelectedTemplateSlotKey | null>(null);
 const templatePreviewMenuOpen = ref(false);
 const viewportPercent = computed(() => Math.round(viewportScale.value * 100));
 const isTemplateMode = computed(() => props.editorMode === "template");
@@ -172,6 +187,9 @@ const visibleLayouts = computed(() =>
 );
 const selectedLayouts = computed(() =>
   visibleLayouts.value.filter((layout) => isSelected(layout.cardId))
+);
+const templateSlotTargetLayout = computed(() =>
+  isTemplateMode.value ? (selectedLayouts.value[0] ?? null) : null
 );
 const cardPresetItems = computed(() => [
   { title: "標準", value: null },
@@ -318,6 +336,44 @@ const templatePreviewLabel = computed(() => {
   }
   return `${selected.tableDisplayName} / ${selected.recordLabel}`;
 });
+const templateSlotItems = computed<TemplateSlotListItem[]>(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return [];
+  }
+
+  const columnIds = resolvedColumnIds(layout);
+  return sortedSlots(layout).map((slot, index) => {
+    const columnId = columnIds[index] ?? null;
+    const autoName = `スロット${index + 1}`;
+    const boundLabel = columnId === null ? null : columnDisplayName(columnId);
+
+    return {
+      autoName,
+      cardId: layout.cardId,
+      isBound: columnId !== null,
+      label: boundLabel ?? autoName,
+      slotId: slot.slotId,
+      statusLabel: columnId === null ? "未紐付け" : "紐付け済み"
+    };
+  });
+});
+const selectedTemplateSlotItem = computed(() => {
+  const key = selectedTemplateSlotKey.value;
+  if (!key) {
+    return null;
+  }
+
+  return (
+    templateSlotItems.value.find(
+      (slot) => slot.cardId === key.cardId && slot.slotId === key.slotId
+    ) ?? null
+  );
+});
+const templateSlotTargetCardLabel = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  return layout ? cardBindingLabel(layout, 0) : "";
+});
 const bindingDraftValues = computed(() =>
   Object.values(bindingDraft.value)
     .flat()
@@ -348,6 +404,7 @@ watch(
   () => {
     clearSelection();
     closeBindingEditor();
+    selectedTemplateSlotKey.value = null;
     resetViewport();
   }
 );
@@ -368,9 +425,34 @@ watch(editMode, (enabled) => {
     selectionDrag.value = null;
     panDrag.value = null;
     isSpacePressed.value = false;
+    selectedTemplateSlotKey.value = null;
     resetViewport();
   }
 });
+watch(
+  [templateSlotTargetLayout, templateSlotItems],
+  ([layout, slotItems]) => {
+    if (!layout || slotItems.length === 0) {
+      selectedTemplateSlotKey.value = null;
+      return;
+    }
+
+    const selected = selectedTemplateSlotKey.value;
+    if (
+      selected &&
+      selected.cardId === layout.cardId &&
+      slotItems.some((slot) => slot.slotId === selected.slotId)
+    ) {
+      return;
+    }
+
+    const [firstSlot] = slotItems;
+    selectedTemplateSlotKey.value = firstSlot
+      ? { cardId: firstSlot.cardId, slotId: firstSlot.slotId }
+      : null;
+  },
+  { immediate: true }
+);
 watch(isBindingEditorVisible, (visible) => {
   if (visible) {
     resetBindingDraft();
@@ -676,19 +758,23 @@ function addTemplateSlot(cardId: number) {
     return;
   }
 
+  const slotId = nextTemplateSlotId(layout);
+
   updateLayout(
     {
       ...layout,
       slots: [
         ...sortedSlots(layout),
         {
-          slotId: nextTemplateSlotId(layout),
+          slotId,
           sortOrder: layout.slots.length
         }
       ]
     },
     true
   );
+  selectedTemplateSlotKey.value = { cardId, slotId };
+  setSingleSelection(cardId);
 }
 
 function removeTemplateSlot(cardId: number, index: number) {
@@ -713,27 +799,33 @@ function removeTemplateSlot(cardId: number, index: number) {
   );
 }
 
-function moveTemplateSlot(cardId: number, index: number, direction: -1 | 1) {
+function reorderTemplateSlots(cardId: number, orderedSlotIds: number[]) {
   const layout = draftLayouts.value.find((item) => item.cardId === cardId);
-  if (!layout) {
+  if (!layout || orderedSlotIds.length !== layout.slots.length) {
     return;
   }
 
-  const nextSlots = sortedSlots(layout);
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= nextSlots.length) {
+  const slotMap = new Map(layout.slots.map((slot) => [slot.slotId, slot]));
+  const nextSlots = orderedSlotIds
+    .map((slotId, slotIndex) => {
+      const slot = slotMap.get(slotId);
+      return slot
+        ? {
+            ...slot,
+            sortOrder: slotIndex
+          }
+        : null;
+    })
+    .filter((slot): slot is NonNullable<typeof slot> => slot !== null);
+
+  if (nextSlots.length !== layout.slots.length) {
     return;
   }
 
-  const [moved] = nextSlots.splice(index, 1);
-  nextSlots.splice(nextIndex, 0, moved);
   updateLayout(
     {
       ...layout,
-      slots: nextSlots.map((slot, slotIndex) => ({
-        ...slot,
-        sortOrder: slotIndex
-      }))
+      slots: nextSlots
     },
     true
   );
@@ -773,6 +865,11 @@ function isBindingCardSelected(cardId: number) {
 
 function isBindingSlotCountLocked(layout: ViewLayoutCardItem) {
   return layout.slots.length > 0;
+}
+
+function selectTemplateSlot(cardId: number, slotId: number) {
+  selectedTemplateSlotKey.value = { cardId, slotId };
+  setSingleSelection(cardId);
 }
 
 function saveBindingDraft() {
@@ -1780,28 +1877,31 @@ function layoutToTemplateCard(
         :background-color-disabled="backgroundColorEditingDisabled"
         :background-color-disabled-reason="backgroundColorDisabledReason"
         :background-color-input-value="backgroundColorInputValue"
-        :card-binding-label="cardBindingLabel"
         :card-preset-items="cardPresetItems"
         :has-record-overrides="hasRecordOverrides"
         :is-template-mode="isTemplateMode"
         :is-transparent-background-selected="isTransparentBackgroundSelected"
-        :move-template-slot-down="
-          (cardId, index) => moveTemplateSlot(cardId, index, 1)
-        "
-        :move-template-slot-up="
-          (cardId, index) => moveTemplateSlot(cardId, index, -1)
-        "
         :remove-template-slot="removeTemplateSlot"
+        :reorder-template-slots="reorderTemplateSlots"
         :reset-record-overrides="resetRecordOverrides"
         :reset-selected-card-override="resetSelectedCardOverride"
         :reset-selected-style="resetSelectedStyle"
         :selected-card-has-override="selectedCardHasOverride"
         :selected-layouts="selectedLayouts"
         :selected-preset-id="selectedPresetId"
+        :selected-slot-item="selectedTemplateSlotItem"
+        :selected-template-slot-key="
+          selectedTemplateSlotKey
+            ? `${selectedTemplateSlotKey.cardId}:${selectedTemplateSlotKey.slotId}`
+            : null
+        "
+        :select-template-slot="selectTemplateSlot"
         :style-boolean-input-value="styleBooleanInputValue"
         :style-input-value="styleInputValue"
         :style-inspector-values="styleInspectorValues"
         :style-number-input-value="styleNumberInputValue"
+        :template-slot-items="templateSlotItems"
+        :template-slot-target-card-label="templateSlotTargetCardLabel"
         :theme-color-input-value="themeColorInputValue"
       />
     </div>
