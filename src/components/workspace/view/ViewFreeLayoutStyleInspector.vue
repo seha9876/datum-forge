@@ -2,6 +2,8 @@
 import { computed, ref, watch } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
 
+import { useConfirmDialog } from "../../../composables/useConfirmDialog";
+
 import type {
   LayoutStyleKey,
   LayoutStyleValue
@@ -16,6 +18,11 @@ type TemplateSlotListItem = {
   slotId: number;
   statusLabel: string;
 };
+
+type TemplateSlotContextMenuTarget = {
+  cardId: number;
+  slotId: number;
+} | null;
 
 const props = defineProps<{
   addTemplateSlot: (cardId: number) => void;
@@ -53,8 +60,12 @@ const props = defineProps<{
   themeColorInputValue: (tokenName: string) => string;
 }>();
 
+const confirmDialog = useConfirmDialog();
 const draggableSlotItems = ref<TemplateSlotListItem[]>([]);
-const isTemplateSlotSectionExpanded = ref(false);
+const slotChipRailRef = ref<HTMLElement | null>(null);
+const contextMenuOpen = ref(false);
+const contextMenuTarget = ref<[number, number]>([0, 0]);
+const contextMenuSlotKey = ref<TemplateSlotContextMenuTarget>(null);
 
 watch(
   () => props.templateSlotItems,
@@ -93,10 +104,6 @@ function addTemplateSlotFromSelection() {
   props.addTemplateSlot(firstLayout.cardId);
 }
 
-function toggleTemplateSlotSection() {
-  isTemplateSlotSectionExpanded.value = !isTemplateSlotSectionExpanded.value;
-}
-
 function chipTitle(slot: TemplateSlotListItem) {
   return `${slot.autoName} / ${slot.statusLabel}`;
 }
@@ -104,77 +111,137 @@ function chipTitle(slot: TemplateSlotListItem) {
 function chipShortLabel(index: number) {
   return String(index + 1);
 }
+
+function handleSlotChipWheel(event: WheelEvent) {
+  const rail = slotChipRailRef.value;
+  if (!rail) {
+    return;
+  }
+
+  const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
+  if (maxScrollLeft <= 0) {
+    return;
+  }
+
+  const delta =
+    Math.abs(event.deltaX) > 0
+      ? event.deltaX
+      : Math.abs(event.deltaY) > 0
+        ? event.deltaY
+        : 0;
+  if (delta === 0) {
+    return;
+  }
+
+  const nextScrollLeft = Math.min(
+    maxScrollLeft,
+    Math.max(0, rail.scrollLeft + delta)
+  );
+  if (nextScrollLeft === rail.scrollLeft) {
+    return;
+  }
+
+  event.preventDefault();
+  rail.scrollLeft = nextScrollLeft;
+}
+
+function openSlotContextMenu(event: MouseEvent, slot: TemplateSlotListItem) {
+  event.preventDefault();
+  contextMenuSlotKey.value = {
+    cardId: slot.cardId,
+    slotId: slot.slotId
+  };
+  contextMenuTarget.value = [event.clientX, event.clientY];
+  contextMenuOpen.value = true;
+}
+
+function closeSlotContextMenu() {
+  contextMenuOpen.value = false;
+}
+
+async function confirmRemoveSlotFromMenu() {
+  const target = contextMenuSlotKey.value;
+  if (!target) {
+    return;
+  }
+
+  const slotIndex = draggableSlotItems.value.findIndex(
+    (slot) => slot.cardId === target.cardId && slot.slotId === target.slotId
+  );
+  if (slotIndex < 0) {
+    closeSlotContextMenu();
+    return;
+  }
+
+  const slot = draggableSlotItems.value[slotIndex];
+  const confirmed = await confirmDialog.open({
+    title: "表示スロットを削除",
+    message: `${slot.autoName} を削除します。この操作は元に戻せません。`,
+    confirmText: "削除する",
+    color: "warning"
+  });
+  if (!confirmed) {
+    return;
+  }
+
+  props.removeTemplateSlot(target.cardId, slotIndex);
+  closeSlotContextMenu();
+}
 </script>
 
 <template>
   <aside class="view-style-inspector" @pointerdown.stop @click.stop>
-    <div
-      v-if="isTemplateMode"
-      class="view-template-preview-bindings"
-      :class="{ open: isTemplateSlotSectionExpanded }"
-    >
+    <div v-if="isTemplateMode" class="view-template-preview-bindings">
       <div class="view-slot-card-summary">
         <strong>{{ templateSlotTargetCardLabel || "カード未選択" }}</strong>
         <span>スロット {{ templateSlotCount }}件</span>
       </div>
 
       <div class="view-template-preview-binding-heading">
-        <button
-          type="button"
-          class="view-slot-section-toggle"
-          :aria-expanded="isTemplateSlotSectionExpanded"
-          @click="toggleTemplateSlotSection"
-        >
-          <span class="view-slot-section-toggle-copy">
-            <strong>表示スロット</strong>
-          </span>
-          <span class="view-slot-section-toggle-action">
-            {{ isTemplateSlotSectionExpanded ? "一覧を閉じる" : "一覧を開く" }}
-            <v-icon
-              :icon="
-                isTemplateSlotSectionExpanded
-                  ? 'mdi-chevron-up'
-                  : 'mdi-chevron-down'
-              "
-              size="18"
-            />
-          </span>
-        </button>
+        <strong>表示スロット</strong>
       </div>
 
       <div class="view-template-preview-binding-body">
-        <div
-          v-if="!isTemplateSlotSectionExpanded"
-          class="view-slot-chip-rail-wrap"
-        >
+        <div class="view-slot-chip-strip">
+          <div class="view-slot-chip-strip-fade start" />
           <div
-            v-if="templateSlotItems.length > 0"
+            ref="slotChipRailRef"
             class="view-slot-chip-rail"
-            role="listbox"
-            aria-label="表示スロット一覧"
+            @wheel="handleSlotChipWheel"
           >
-            <button
-              v-for="(slot, slotIndex) in templateSlotItems"
-              :key="slot.slotId"
-              type="button"
-              class="view-slot-chip"
-              :class="{
-                selected:
-                  selectedTemplateSlotKey === `${slot.cardId}:${slot.slotId}`
-              }"
-              :title="chipTitle(slot)"
-              @click="selectTemplateSlot(slot.cardId, slot.slotId)"
+            <VueDraggable
+              v-model="draggableSlotItems"
+              class="view-slot-chip-drag-list"
+              item-key="slotId"
+              tag="div"
+              ghost-class="view-slot-chip-ghost"
+              chosen-class="view-slot-chip-chosen"
+              drag-class="view-slot-chip-drag"
+              :animation="0"
+              :force-fallback="true"
+              :fallback-on-body="true"
+              @end="handleTemplateSlotDragEnd"
             >
-              <span class="view-slot-chip-index">{{
-                chipShortLabel(slotIndex)
-              }}</span>
-              <span
-                class="view-slot-chip-badge"
-                :class="{ bound: slot.isBound }"
+              <button
+                v-for="(slot, slotIndex) in draggableSlotItems"
+                :key="slot.slotId"
+                type="button"
+                class="view-slot-chip"
+                :class="{
+                  selected:
+                    selectedTemplateSlotKey === `${slot.cardId}:${slot.slotId}`,
+                  bound: slot.isBound,
+                  unbound: !slot.isBound
+                }"
+                :title="chipTitle(slot)"
+                @click="selectTemplateSlot(slot.cardId, slot.slotId)"
+                @contextmenu="openSlotContextMenu($event, slot)"
               >
-                {{ slot.isBound ? "済" : "未" }}
-              </span>
-            </button>
+                <span class="view-slot-chip-index">
+                  {{ chipShortLabel(slotIndex) }}
+                </span>
+              </button>
+            </VueDraggable>
             <button
               type="button"
               class="view-slot-chip add-chip"
@@ -185,89 +252,11 @@ function chipShortLabel(index: number) {
               <v-icon icon="mdi-plus" size="16" />
             </button>
           </div>
-          <div v-else class="view-slot-chip-empty">
-            <span>まだスロットはありません。</span>
-            <v-btn
-              size="small"
-              variant="text"
-              prepend-icon="mdi-plus"
-              :disabled="!canAddTemplateSlot"
-              @click="addTemplateSlotFromSelection"
-            >
-              スロット追加
-            </v-btn>
-          </div>
+          <div class="view-slot-chip-strip-fade end" />
         </div>
-
-        <div v-else class="view-slot-panel-open">
-          <div class="view-slot-panel-actions">
-            <v-btn
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-plus"
-              :disabled="!canAddTemplateSlot"
-              @click="addTemplateSlotFromSelection"
-            >
-              スロット追加
-            </v-btn>
-          </div>
-          <VueDraggable
-            v-if="draggableSlotItems.length > 0"
-            v-model="draggableSlotItems"
-            class="view-slot-compact-list"
-            handle=".view-slot-row-handle"
-            item-key="slotId"
-            ghost-class="view-slot-row-ghost"
-            chosen-class="view-slot-row-chosen"
-            drag-class="view-slot-row-drag"
-            :animation="0"
-            :force-fallback="true"
-            :fallback-on-body="true"
-            @end="handleTemplateSlotDragEnd"
-          >
-            <button
-              v-for="(slot, slotIndex) in draggableSlotItems"
-              :key="slot.slotId"
-              type="button"
-              class="view-slot-row"
-              :class="{
-                selected:
-                  selectedTemplateSlotKey === `${slot.cardId}:${slot.slotId}`
-              }"
-              @click="selectTemplateSlot(slot.cardId, slot.slotId)"
-            >
-              <span
-                class="view-slot-row-handle"
-                aria-label="スロット順を変更"
-                title="ドラッグで順序変更"
-              >
-                <v-icon icon="mdi-drag-vertical" size="16" />
-              </span>
-              <span class="view-slot-row-main">
-                <strong :title="slot.autoName">{{ slot.autoName }}</strong>
-                <small :title="slot.label">{{ slot.label }}</small>
-              </span>
-              <v-chip
-                size="x-small"
-                variant="tonal"
-                :color="slot.isBound ? 'primary' : 'default'"
-                class="view-slot-row-status"
-              >
-                {{ slot.statusLabel }}
-              </v-chip>
-              <v-btn
-                icon="mdi-close"
-                size="x-small"
-                variant="text"
-                :aria-label="`${slot.autoName} を削除`"
-                @click.stop="removeTemplateSlot(slot.cardId, slotIndex)"
-              />
-            </button>
-          </VueDraggable>
-          <p v-else class="view-empty-hint mb-0">
-            まだスロットはありません。カードを選択して追加してください。
-          </p>
-        </div>
+        <p v-if="templateSlotItems.length === 0" class="view-empty-hint mb-0">
+          まだスロットはありません。カードを選択して追加してください。
+        </p>
 
         <section class="view-slot-detail-panel">
           <div class="view-slot-detail-heading">
@@ -540,5 +529,19 @@ function chipShortLabel(index: number) {
         スタイルをリセット
       </button>
     </div>
+
+    <v-menu
+      v-model="contextMenuOpen"
+      :target="contextMenuTarget"
+      location="bottom start"
+    >
+      <v-list density="compact" min-width="160">
+        <v-list-item
+          prepend-icon="mdi-delete-outline"
+          title="スロットを削除"
+          @click="confirmRemoveSlotFromMenu"
+        />
+      </v-list>
+    </v-menu>
   </aside>
 </template>

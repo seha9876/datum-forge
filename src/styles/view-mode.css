@@ -326,15 +326,10 @@
 
 .view-template-preview-bindings {
   display: grid;
-  gap: 0;
-  min-width: 0;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.16);
-}
-
-.view-template-preview-bindings.open {
   gap: 0.65rem;
+  min-width: 0;
   padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.16);
 }
 
 .view-template-preview-binding-heading {
@@ -342,7 +337,6 @@
 }
 
 .view-template-preview-binding-heading > div,
-.view-slot-section-toggle-copy,
 .view-slot-card-summary {
   display: grid;
   gap: 0.15rem;
@@ -374,70 +368,80 @@
   border-bottom: 1px solid rgba(var(--v-theme-outline), 0.14);
 }
 
-.view-slot-section-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 0.16s ease,
-    background-color 0.16s ease;
-}
-
-.view-slot-section-toggle:hover,
-.view-slot-section-toggle:focus-visible {
-  border-color: rgba(var(--v-theme-primary), 0.22);
-  background: rgba(var(--v-theme-primary), 0.06);
-  outline: none;
-}
-
-.view-slot-section-toggle:focus-visible {
-  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.12);
-}
-
-.view-slot-section-toggle-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: var(--muted);
-  font-size: 0.82rem;
-  white-space: nowrap;
-}
-
-.view-slot-chip-rail-wrap,
-.view-slot-panel-open {
+.view-slot-chip-strip {
+  position: relative;
   min-width: 0;
 }
 
-.view-slot-panel-actions {
-  display: flex;
-  justify-content: flex-start;
+.view-slot-chip-strip-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.view-slot-chip-strip-fade.start {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--v-theme-surface), 0.92),
+    rgba(var(--v-theme-surface), 0)
+  );
+}
+
+.view-slot-chip-strip-fade.end {
+  right: 0;
+  background: linear-gradient(
+    270deg,
+    rgba(var(--v-theme-surface), 0.92),
+    rgba(var(--v-theme-surface), 0)
+  );
 }
 
 .view-slot-chip-rail {
   display: flex;
   gap: 0.45rem;
+  align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 0.2rem;
+  padding: 0.1rem 0.2rem 0.35rem;
   scrollbar-gutter: stable;
+}
+
+.view-slot-chip-drag-list {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.view-slot-chip-rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.view-slot-chip-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.view-slot-chip-rail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(var(--v-theme-outline), 0.28);
+}
+
+.view-slot-chip-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--v-theme-outline), 0.28) transparent;
 }
 
 .view-slot-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  max-width: 180px;
+  justify-content: center;
+  gap: 0;
+  min-width: 40px;
   min-height: 34px;
-  padding: 0.4rem 0.65rem;
+  padding: 0.4rem 0.7rem;
   border: 1px solid rgba(var(--v-theme-outline), 0.16);
   border-radius: 999px;
   background: rgba(var(--v-theme-surface), 0.78);
@@ -463,6 +467,16 @@
   box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.14);
 }
 
+.view-slot-chip.bound {
+  border-color: rgba(var(--v-theme-outline), 0.16);
+  background: rgba(var(--v-theme-surface), 0.82);
+}
+
+.view-slot-chip.unbound {
+  border-color: rgba(var(--v-theme-warning), 0.32);
+  background: rgba(var(--v-theme-warning), 0.08);
+}
+
 .view-slot-chip.add-chip {
   justify-content: center;
   width: 34px;
@@ -481,119 +495,12 @@
   line-height: 1;
 }
 
-.view-slot-chip-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  padding: 0.12rem 0.35rem;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-warning), 0.14);
-  color: rgb(var(--v-theme-warning));
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-
-.view-slot-chip-badge.bound {
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-}
-
-.view-slot-chip-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.2rem 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.view-slot-compact-list {
-  display: grid;
-  gap: 0.4rem;
-  max-height: 220px;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 0.1rem;
-}
-
-.view-slot-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid rgba(var(--v-theme-outline), 0.16);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-surface), 0.78);
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    box-shadow 0.16s ease;
-}
-
-.view-slot-row:hover,
-.view-slot-row:focus-visible {
-  border-color: rgba(var(--v-theme-primary), 0.26);
-  background: rgba(var(--v-theme-primary), 0.06);
-  outline: none;
-}
-
-.view-slot-row.selected {
-  border-color: rgba(var(--v-theme-primary), 0.34);
-  background: rgba(var(--v-theme-primary), 0.1);
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.14);
-}
-
-.view-slot-row-handle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  cursor: grab;
-}
-
-.view-slot-row-handle:active {
-  cursor: grabbing;
-}
-
-.view-slot-row-main {
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
-.view-slot-row-main strong,
-.view-slot-row-main small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.view-slot-row-main small {
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.view-slot-row-status {
-  justify-self: end;
-}
-
-.view-slot-row .v-btn {
-  flex: 0 0 auto;
-}
-
-.view-slot-row-ghost {
+.view-slot-chip-ghost {
   opacity: 0.58;
 }
 
-.view-slot-row-chosen,
-.view-slot-row-drag {
+.view-slot-chip-chosen,
+.view-slot-chip-drag {
   border-color: rgba(var(--v-theme-primary), 0.32);
   background: rgba(var(--v-theme-primary), 0.08);
 }
