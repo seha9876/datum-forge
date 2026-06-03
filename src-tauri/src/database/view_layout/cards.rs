@@ -5,12 +5,14 @@
 use super::*;
 use crate::database::validation::bool_to_i64;
 use rusqlite::{params, OptionalExtension};
+use std::collections::HashMap;
 
 impl Db {
     pub(super) fn list_view_layout_template_cards(
         &self,
         template_id: i64,
     ) -> Result<Vec<ViewLayoutTemplateCard>, DbError> {
+        let slots_by_card = self.list_view_layout_template_card_slots_by_card(template_id)?;
         let mut stmt = self.conn.prepare(
             "
             SELECT
@@ -41,8 +43,10 @@ impl Db {
             ",
         )?;
         let rows = stmt.query_map([template_id], |row| {
+            let card_id = row.get(0)?;
             Ok(ViewLayoutTemplateCard {
-                card_id: row.get(0)?,
+                card_id,
+                slots: slots_by_card.get(&card_id).cloned().unwrap_or_default(),
                 preset_id: row.get(1)?,
                 x: row.get(2)?,
                 y: row.get(3)?,
@@ -66,6 +70,41 @@ impl Db {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+    }
+
+    pub(super) fn list_view_layout_template_card_slots(
+        &self,
+        template_id: i64,
+    ) -> Result<Vec<(i64, ViewLayoutTemplateCardSlot)>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT card_id, slot_id, sort_order
+            FROM view_layout_template_card_slots
+            WHERE template_id = ?
+            ORDER BY card_id, sort_order, slot_id
+            ",
+        )?;
+        let rows = stmt.query_map([template_id], |row| {
+            Ok((
+                row.get(0)?,
+                ViewLayoutTemplateCardSlot {
+                    slot_id: row.get(1)?,
+                    sort_order: row.get(2)?,
+                },
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+    }
+
+    pub(super) fn list_view_layout_template_card_slots_by_card(
+        &self,
+        template_id: i64,
+    ) -> Result<HashMap<i64, Vec<ViewLayoutTemplateCardSlot>>, DbError> {
+        let mut slots_by_card = HashMap::<i64, Vec<ViewLayoutTemplateCardSlot>>::new();
+        for (card_id, slot) in self.list_view_layout_template_card_slots(template_id)? {
+            slots_by_card.entry(card_id).or_default().push(slot);
+        }
+        Ok(slots_by_card)
     }
 
     pub(super) fn list_view_layout_template_card_ids(
@@ -232,5 +271,33 @@ impl Db {
             )
             .optional()
             .map_err(DbError::from)
+    }
+
+    pub(super) fn replace_view_layout_template_card_slots(
+        &self,
+        template_id: i64,
+        card_id: i64,
+        slots: &[ViewLayoutTemplateCardSlot],
+    ) -> Result<(), DbError> {
+        self.conn.execute(
+            "
+            DELETE FROM view_layout_template_card_slots
+            WHERE template_id = ? AND card_id = ?
+            ",
+            params![template_id, card_id],
+        )?;
+
+        for (index, _) in slots.iter().enumerate() {
+            self.conn.execute(
+                "
+                INSERT INTO view_layout_template_card_slots
+                  (template_id, card_id, sort_order, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ",
+                params![template_id, card_id, index as i64],
+            )?;
+        }
+
+        Ok(())
     }
 }

@@ -109,11 +109,6 @@ const isBindingEditorOpen = ref(false);
 const bindingDraft = ref<Record<number, Array<number | null>>>({});
 const selectedBindingCardId = ref<number | null>(null);
 const templatePreviewMenuOpen = ref(false);
-const templatePreviewBindingDraft = ref<Record<number, Array<number | null>>>(
-  {}
-);
-const isTemplatePreviewBindingsOpen = ref(false);
-const hasManuallyToggledTemplatePreviewBindings = ref(false);
 const viewportPercent = computed(() => Math.round(viewportScale.value * 100));
 const isTemplateMode = computed(() => props.editorMode === "template");
 const isTemplatePreviewActive = computed(
@@ -158,6 +153,9 @@ const displayColumns = computed(() =>
   )
 );
 function isBoundToCurrentTable(item: ViewLayoutCardItem) {
+  if (item.slots.length > 0) {
+    return true;
+  }
   return item.columns.some((binding) =>
     displayColumns.value.some((column) => column.id === binding.columnId)
   );
@@ -325,17 +323,6 @@ const bindingDraftValues = computed(() =>
     .flat()
     .filter((columnId): columnId is number => columnId !== null)
 );
-const templatePreviewBindingValues = computed(() =>
-  Object.values(templatePreviewBindingDraft.value)
-    .flat()
-    .filter((columnId): columnId is number => columnId !== null)
-);
-const templatePreviewBoundCount = computed(
-  () => templatePreviewBindingValues.value.length
-);
-const templatePreviewUnboundCount = computed(
-  () => props.templateCards.length - templatePreviewBoundCount.value
-);
 const canSaveBindingDraft = computed(
   () => bindingDraftValues.value.length > 0 && !props.saving
 );
@@ -356,44 +343,6 @@ watch(
   },
   { immediate: true }
 );
-watch(
-  () =>
-    [
-      props.templatePreviewBindings,
-      props.templateCards,
-      props.templatePreviewSelectedItem
-    ] as const,
-  () => {
-    resetTemplatePreviewBindingDraft();
-  },
-  { immediate: true }
-);
-watch(
-  () => props.templatePreviewSelectedItem,
-  (selected, previous) => {
-    if (selected === null) {
-      isTemplatePreviewBindingsOpen.value = false;
-      hasManuallyToggledTemplatePreviewBindings.value = false;
-      return;
-    }
-
-    if (
-      selected !== previous &&
-      !hasManuallyToggledTemplatePreviewBindings.value
-    ) {
-      isTemplatePreviewBindingsOpen.value =
-        templatePreviewUnboundCount.value > 0;
-    }
-  }
-);
-watch(templatePreviewUnboundCount, (count) => {
-  if (
-    isTemplatePreviewActive.value &&
-    !hasManuallyToggledTemplatePreviewBindings.value
-  ) {
-    isTemplatePreviewBindingsOpen.value = count > 0;
-  }
-});
 watch(
   () => selectedRecordPanelKey.value,
   () => {
@@ -456,6 +405,12 @@ function normalizedBindingIds(columnIds: Array<number | null>) {
   return columnIds.length > 0 ? columnIds : [null];
 }
 
+function sortedSlots(layout: ViewLayoutCardItem | ViewLayoutTemplateCard) {
+  return [...layout.slots].sort(
+    (left, right) => left.sortOrder - right.sortOrder
+  );
+}
+
 function layoutColumnIds(layout: ViewLayoutCardItem) {
   return normalizedBindingIds(
     [...layout.columns]
@@ -464,18 +419,30 @@ function layoutColumnIds(layout: ViewLayoutCardItem) {
   );
 }
 
-function effectiveColumnIds(layout: ViewLayoutCardItem) {
-  if (isTemplatePreviewActive.value) {
-    return templatePreviewBindingDraft.value[layout.cardId] ?? [null];
-  }
-
-  return layoutColumnIds(layout);
+function templatePreviewColumnIds(layout: ViewLayoutCardItem) {
+  return normalizedBindingIds(
+    props.templatePreviewBindings
+      .filter((binding) => binding.cardId === layout.cardId)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((binding) => binding.columnId)
+  );
 }
 
 function resolvedColumnIds(layout: ViewLayoutCardItem) {
-  return isTemplateMode.value
-    ? effectiveColumnIds(layout)
-    : layoutColumnIds(layout);
+  const columnIds =
+    isTemplateMode.value && isTemplatePreviewActive.value
+      ? templatePreviewColumnIds(layout)
+      : layoutColumnIds(layout);
+  const slotCount = sortedSlots(layout).length;
+
+  if (slotCount > 0) {
+    return Array.from(
+      { length: slotCount },
+      (_, index) => columnIds[index] ?? null
+    );
+  }
+
+  return columnIds;
 }
 
 function fieldValue(column: AppColumn) {
@@ -488,7 +455,7 @@ function fieldLabel(columnId: number) {
 
 function cardSummaryLabel(layout: ViewLayoutCardItem) {
   if (isTemplateMode.value) {
-    const columnIds = effectiveColumnIds(layout).filter(
+    const columnIds = resolvedColumnIds(layout).filter(
       (columnId): columnId is number => columnId !== null
     );
     if (isTemplatePreviewActive.value && columnIds.length > 0) {
@@ -536,25 +503,23 @@ function fieldValueByColumnId(columnId: number) {
 }
 
 function fieldEntriesByLayout(layout: ViewLayoutCardItem) {
-  const columnIds = resolvedColumnIds(layout).filter(
-    (columnId): columnId is number => columnId !== null
-  );
+  const slotCount = sortedSlots(layout).length;
+  const columnIds = resolvedColumnIds(layout);
 
-  if (isTemplateMode.value) {
-    if (!isTemplatePreviewActive.value) {
-      return [];
-    }
-    return columnIds.map((columnId) => ({
-      key: `${layout.cardId}:${columnId}`,
-      label: fieldLabel(columnId),
-      value: fieldValueByColumnId(columnId)
-    }));
+  if (slotCount === 0) {
+    return columnIds
+      .filter((columnId): columnId is number => columnId !== null)
+      .map((columnId, index) => ({
+        key: `${layout.cardId}:${columnId}:${index}`,
+        label: fieldLabel(columnId),
+        value: fieldValueByColumnId(columnId)
+      }));
   }
 
   return columnIds.map((columnId, index) => ({
-    key: `${layout.cardId}:${columnId}:${index}`,
-    label: fieldLabel(columnId),
-    value: fieldValueByColumnId(columnId)
+    key: `${layout.cardId}:slot:${index}`,
+    label: columnId === null ? `スロット ${index + 1}` : fieldLabel(columnId),
+    value: columnId === null ? "未設定" : fieldValueByColumnId(columnId)
   }));
 }
 
@@ -587,41 +552,11 @@ function setBindingDraft(
 
 function resetBindingDraft() {
   bindingDraft.value = Object.fromEntries(
-    draftLayouts.value.map((layout) => [layout.cardId, layoutColumnIds(layout)])
-  );
-}
-
-function resetTemplatePreviewBindingDraft() {
-  templatePreviewBindingDraft.value = Object.fromEntries(
-    props.templateCards.map((card) => [
-      card.cardId,
-      normalizedBindingIds(
-        props.templatePreviewBindings
-          .filter((binding) => binding.cardId === card.cardId)
-          .sort((left, right) => left.sortOrder - right.sortOrder)
-          .map((binding) => binding.columnId)
-      )
+    draftLayouts.value.map((layout) => [
+      layout.cardId,
+      resolvedColumnIds(layout)
     ])
   );
-}
-
-function setTemplatePreviewBinding(
-  cardId: number,
-  index: number,
-  columnId: unknown
-) {
-  const nextColumnId = typeof columnId === "number" ? columnId : null;
-  const next = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
-  next[index] = nextColumnId;
-  templatePreviewBindingDraft.value = {
-    ...templatePreviewBindingDraft.value,
-    [cardId]: normalizedBindingIds(next)
-  };
-}
-
-function toggleTemplatePreviewBindings() {
-  hasManuallyToggledTemplatePreviewBindings.value = true;
-  isTemplatePreviewBindingsOpen.value = !isTemplatePreviewBindingsOpen.value;
 }
 
 function selectTemplatePreviewRecord(value: unknown) {
@@ -731,45 +666,77 @@ function moveBindingSlot(cardId: number, index: number, direction: -1 | 1) {
   };
 }
 
-function addTemplatePreviewBindingSlot(cardId: number) {
-  templatePreviewBindingDraft.value = {
-    ...templatePreviewBindingDraft.value,
-    [cardId]: [...(templatePreviewBindingDraft.value[cardId] ?? [null]), null]
-  };
+function nextTemplateSlotId(layout: ViewLayoutCardItem) {
+  return Math.min(0, ...layout.slots.map((slot) => slot.slotId)) - 1;
 }
 
-function removeTemplatePreviewBindingSlot(cardId: number, index: number) {
-  const current = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
-  if (current.length <= 1) {
-    templatePreviewBindingDraft.value = {
-      ...templatePreviewBindingDraft.value,
-      [cardId]: [null]
-    };
+function addTemplateSlot(cardId: number) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout) {
     return;
   }
-  current.splice(index, 1);
-  templatePreviewBindingDraft.value = {
-    ...templatePreviewBindingDraft.value,
-    [cardId]: normalizedBindingIds(current)
-  };
+
+  updateLayout(
+    {
+      ...layout,
+      slots: [
+        ...sortedSlots(layout),
+        {
+          slotId: nextTemplateSlotId(layout),
+          sortOrder: layout.slots.length
+        }
+      ]
+    },
+    true
+  );
 }
 
-function moveTemplatePreviewBindingSlot(
-  cardId: number,
-  index: number,
-  direction: -1 | 1
-) {
-  const current = [...(templatePreviewBindingDraft.value[cardId] ?? [null])];
+function removeTemplateSlot(cardId: number, index: number) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout) {
+    return;
+  }
+
+  const nextSlots = sortedSlots(layout)
+    .filter((_, slotIndex) => slotIndex !== index)
+    .map((slot, slotIndex) => ({
+      ...slot,
+      sortOrder: slotIndex
+    }));
+
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots
+    },
+    true
+  );
+}
+
+function moveTemplateSlot(cardId: number, index: number, direction: -1 | 1) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout) {
+    return;
+  }
+
+  const nextSlots = sortedSlots(layout);
   const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= current.length) {
+  if (nextIndex < 0 || nextIndex >= nextSlots.length) {
     return;
   }
-  const [moved] = current.splice(index, 1);
-  current.splice(nextIndex, 0, moved);
-  templatePreviewBindingDraft.value = {
-    ...templatePreviewBindingDraft.value,
-    [cardId]: current
-  };
+
+  const [moved] = nextSlots.splice(index, 1);
+  nextSlots.splice(nextIndex, 0, moved);
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots.map((slot, slotIndex) => ({
+        ...slot,
+        sortOrder: slotIndex
+      }))
+    },
+    true
+  );
 }
 
 /**
@@ -802,6 +769,10 @@ function selectBindingCard(cardId: number) {
 
 function isBindingCardSelected(cardId: number) {
   return selectedBindingCardId.value === cardId;
+}
+
+function isBindingSlotCountLocked(layout: ViewLayoutCardItem) {
+  return layout.slots.length > 0;
 }
 
 function saveBindingDraft() {
@@ -1409,6 +1380,7 @@ function addTemplateCard() {
     tableId: 0,
     cardId,
     columns: [],
+    slots: [],
     presetId: null,
     label: null,
     x: 120 + offset,
@@ -1451,6 +1423,7 @@ function templateCardToLayout(
     tableId: 0,
     cardId: card.cardId,
     columns: [],
+    slots: sortedSlots(card),
     presetId: normalizedPresetId(card),
     label: null,
     x: card.x,
@@ -1480,6 +1453,10 @@ function layoutToTemplateCard(
 ): ViewLayoutTemplateCard {
   return {
     cardId: layout.cardId,
+    slots: sortedSlots(layout).map((slot, index) => ({
+      slotId: slot.slotId,
+      sortOrder: index
+    })),
     presetId: normalizedPresetId(layout),
     label: null,
     x: layout.x,
@@ -1622,7 +1599,8 @@ function layoutToTemplateCard(
             <template
               v-else-if="
                 shouldRenderCardContent ||
-                (!isTemplateMode && layout.columns.length > 0)
+                (!isTemplateMode &&
+                  (layout.slots.length > 0 || layout.columns.length > 0))
               "
             >
               <v-tooltip
@@ -1767,6 +1745,7 @@ function layoutToTemplateCard(
         :column-display-name="columnDisplayName"
         :has-unbound-template-for-table="hasUnboundTemplateForTable"
         :is-binding-card-selected="isBindingCardSelected"
+        :is-binding-slot-count-locked="isBindingSlotCountLocked"
         :record-template-items="recordTemplateItems"
         :record-template-source-chip-label="recordTemplateSourceChipLabel"
         :record-template-source-color="recordTemplateSourceColor"
@@ -1790,7 +1769,7 @@ function layoutToTemplateCard(
       />
       <ViewFreeLayoutStyleInspector
         v-else-if="editMode"
-        :add-template-preview-binding-slot="addTemplatePreviewBindingSlot"
+        :add-template-slot="addTemplateSlot"
         :apply-background-color-mode="applyBackgroundColorModeWithPolicy"
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
         :apply-number-style-from-input="applyNumberStyleFromInput"
@@ -1801,38 +1780,29 @@ function layoutToTemplateCard(
         :background-color-disabled="backgroundColorEditingDisabled"
         :background-color-disabled-reason="backgroundColorDisabledReason"
         :background-color-input-value="backgroundColorInputValue"
-        :binding-column-items="bindingColumnItems"
         :card-binding-label="cardBindingLabel"
         :card-preset-items="cardPresetItems"
-        :draft-layouts="draftLayouts"
         :has-record-overrides="hasRecordOverrides"
         :is-template-mode="isTemplateMode"
-        :is-template-preview-active="isTemplatePreviewActive"
-        :is-template-preview-bindings-open="isTemplatePreviewBindingsOpen"
         :is-transparent-background-selected="isTransparentBackgroundSelected"
-        :move-template-preview-binding-slot-down="
-          (cardId, index) => moveTemplatePreviewBindingSlot(cardId, index, 1)
+        :move-template-slot-down="
+          (cardId, index) => moveTemplateSlot(cardId, index, 1)
         "
-        :move-template-preview-binding-slot-up="
-          (cardId, index) => moveTemplatePreviewBindingSlot(cardId, index, -1)
+        :move-template-slot-up="
+          (cardId, index) => moveTemplateSlot(cardId, index, -1)
         "
-        :remove-template-preview-binding-slot="removeTemplatePreviewBindingSlot"
+        :remove-template-slot="removeTemplateSlot"
         :reset-record-overrides="resetRecordOverrides"
         :reset-selected-card-override="resetSelectedCardOverride"
         :reset-selected-style="resetSelectedStyle"
         :selected-card-has-override="selectedCardHasOverride"
         :selected-layouts="selectedLayouts"
         :selected-preset-id="selectedPresetId"
-        :set-template-preview-binding="setTemplatePreviewBinding"
         :style-boolean-input-value="styleBooleanInputValue"
         :style-input-value="styleInputValue"
         :style-inspector-values="styleInspectorValues"
         :style-number-input-value="styleNumberInputValue"
-        :template-cards="templateCards"
-        :template-preview-binding-draft="templatePreviewBindingDraft"
-        :template-preview-bound-count="templatePreviewBoundCount"
         :theme-color-input-value="themeColorInputValue"
-        :toggle-template-preview-bindings="toggleTemplatePreviewBindings"
       />
     </div>
   </section>

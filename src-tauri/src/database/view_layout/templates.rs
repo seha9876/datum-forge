@@ -181,6 +181,22 @@ impl Db {
                 self.insert_view_layout_template_card(target_template_id, item, sort_order, None)?;
             self.conn.execute(
                 "
+                INSERT INTO view_layout_template_card_slots
+                  (template_id, card_id, sort_order, updated_at)
+                SELECT ?, ?, sort_order, CURRENT_TIMESTAMP
+                FROM view_layout_template_card_slots
+                WHERE template_id = ? AND card_id = ?
+                ORDER BY sort_order, slot_id
+                ",
+                params![
+                    target_template_id,
+                    card_id,
+                    source_template_id,
+                    source_card_id
+                ],
+            )?;
+            self.conn.execute(
+                "
                 INSERT OR IGNORE INTO view_layout_card_column_bindings
                   (template_id, table_id, card_id, sort_order, column_id, updated_at)
                 SELECT ?, table_id, ?, sort_order, column_id, CURRENT_TIMESTAMP

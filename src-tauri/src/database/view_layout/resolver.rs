@@ -24,6 +24,7 @@ impl Db {
                     map
                 },
             );
+        let slots = self.list_view_layout_template_card_slots_by_card(template_id)?;
 
         let mut stmt = self.conn.prepare(
             "
@@ -66,6 +67,7 @@ impl Db {
                 table_id: row.get(0)?,
                 card_id,
                 columns: bindings.get(&card_id).cloned().unwrap_or_default(),
+                slots: slots.get(&card_id).cloned().unwrap_or_default(),
                 preset_id: row.get(2)?,
                 x: row.get(3)?,
                 y: row.get(4)?,

@@ -129,6 +129,10 @@ impl Db {
             [payload.template_id],
         )?;
         tx.execute(
+            "DELETE FROM view_layout_template_card_slots WHERE template_id = ?",
+            [payload.template_id],
+        )?;
+        tx.execute(
             "DELETE FROM view_layout_template_cards WHERE template_id = ?",
             [payload.template_id],
         )?;
@@ -311,6 +315,10 @@ impl Db {
                 params![payload.template_id, *card_id],
             )?;
             tx.execute(
+                "DELETE FROM view_layout_template_card_slots WHERE template_id = ? AND card_id = ?",
+                params![payload.template_id, *card_id],
+            )?;
+            tx.execute(
                 "DELETE FROM view_layout_template_cards WHERE template_id = ? AND card_id = ?",
                 params![payload.template_id, *card_id],
             )?;
@@ -321,7 +329,7 @@ impl Db {
             let explicit_card_id = existing_card_ids
                 .contains(&card.card_id)
                 .then_some(card.card_id);
-            self.insert_view_layout_template_card(
+            let card_id = self.insert_view_layout_template_card(
                 payload.template_id,
                 SaveViewLayoutCardItem {
                     card_id: card.card_id,
@@ -348,6 +356,7 @@ impl Db {
                 index as i64,
                 explicit_card_id,
             )?;
+            self.replace_view_layout_template_card_slots(payload.template_id, card_id, &card.slots)?;
         }
 
         Ok(())

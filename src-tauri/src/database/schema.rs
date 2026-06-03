@@ -195,6 +195,16 @@ impl Db {
               FOREIGN KEY(template_id) REFERENCES view_layout_templates(id)
             );
 
+            CREATE TABLE IF NOT EXISTS view_layout_template_card_slots (
+              slot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              template_id INTEGER NOT NULL,
+              card_id INTEGER NOT NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(template_id) REFERENCES view_layout_templates(id),
+              FOREIGN KEY(card_id) REFERENCES view_layout_template_cards(card_id)
+            );
+
             CREATE TABLE IF NOT EXISTS view_layout_card_column_bindings (
               template_id INTEGER NOT NULL,
               table_id INTEGER NOT NULL,

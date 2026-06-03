@@ -2,6 +2,7 @@ export interface ViewLayoutCardItem {
   tableId: number;
   cardId: number;
   columns: ViewLayoutCardColumnBinding[];
+  slots: ViewLayoutTemplateCardSlot[];
   presetId?: string | null;
   label?: string | null;
   x: number;
@@ -31,6 +32,11 @@ export interface ViewLayoutCardColumnBinding {
   sortOrder: number;
 }
 
+export interface ViewLayoutTemplateCardSlot {
+  slotId: number;
+  sortOrder: number;
+}
+
 export interface ViewLayoutTemplate {
   id: number;
   name: string;
@@ -42,6 +48,7 @@ export interface ViewLayoutTemplate {
 
 export interface ViewLayoutTemplateCard {
   cardId: number;
+  slots: ViewLayoutTemplateCardSlot[];
   presetId?: string | null;
   x: number;
   y: number;

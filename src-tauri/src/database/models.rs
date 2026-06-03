@@ -232,6 +232,7 @@ pub struct ViewLayoutCardItem {
     pub table_id: i64,
     pub card_id: i64,
     pub columns: Vec<ViewLayoutCardColumnBinding>,
+    pub slots: Vec<ViewLayoutTemplateCardSlot>,
     pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
@@ -269,6 +270,7 @@ pub struct ViewLayoutTemplate {
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutTemplateCard {
     pub card_id: i64,
+    pub slots: Vec<ViewLayoutTemplateCardSlot>,
     pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
@@ -763,6 +765,13 @@ pub struct ListViewLayoutCardColumnBindingsPayload {
 pub struct SaveViewLayoutTemplateCardsPayload {
     pub template_id: i64,
     pub cards: Vec<ViewLayoutTemplateCard>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewLayoutTemplateCardSlot {
+    pub slot_id: i64,
+    pub sort_order: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]

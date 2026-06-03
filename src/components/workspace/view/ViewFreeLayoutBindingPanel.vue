@@ -10,6 +10,7 @@ defineProps<{
   columnDisplayName: (columnId: number | null) => string;
   hasUnboundTemplateForTable: boolean;
   isBindingCardSelected: (cardId: number) => boolean;
+  isBindingSlotCountLocked: (layout: ViewLayoutCardItem) => boolean;
   recordTemplateItems: Array<{ title: string; value: number | null }>;
   recordTemplateSourceChipLabel: string;
   recordTemplateSourceColor: string;
@@ -77,7 +78,7 @@ const emit = defineEmits<{
           "
           item-title="title"
           item-value="value"
-          label="個別テンプレート"
+          label="レコードテンプレート"
           variant="outlined"
           density="compact"
           hide-details
@@ -103,7 +104,7 @@ const emit = defineEmits<{
     <div class="view-binding-setup-copy">
       <strong>カードごとの表示カラム</strong>
       <p>
-        1枚のカードに複数のカラムを追加できます。上から順にカード内へ縦積みで表示されます。
+        テンプレートで用意した表示スロットに、どのカラムを表示するかを順番どおりに設定します。
       </p>
     </div>
 
@@ -126,9 +127,10 @@ const emit = defineEmits<{
             size="x-small"
             variant="text"
             prepend-icon="mdi-plus"
+            :disabled="isBindingSlotCountLocked(layout)"
             @click.stop="emit('add-binding-slot', layout.cardId)"
           >
-            行を追加
+            行追加
           </v-btn>
         </div>
 
@@ -172,7 +174,9 @@ const emit = defineEmits<{
                   icon="mdi-chevron-up"
                   size="x-small"
                   variant="text"
-                  :disabled="bindingIndex === 0"
+                  :disabled="
+                    isBindingSlotCountLocked(layout) || bindingIndex === 0
+                  "
                   @click.stop="
                     emit('move-binding-slot-up', layout.cardId, bindingIndex)
                   "
@@ -182,8 +186,9 @@ const emit = defineEmits<{
                   size="x-small"
                   variant="text"
                   :disabled="
+                    isBindingSlotCountLocked(layout) ||
                     bindingIndex >=
-                    (bindingDraft[layout.cardId]?.length ?? 1) - 1
+                      (bindingDraft[layout.cardId]?.length ?? 1) - 1
                   "
                   @click.stop="
                     emit('move-binding-slot-down', layout.cardId, bindingIndex)
@@ -193,7 +198,10 @@ const emit = defineEmits<{
                   icon="mdi-close"
                   size="x-small"
                   variant="text"
-                  :disabled="(bindingDraft[layout.cardId]?.length ?? 1) <= 1"
+                  :disabled="
+                    isBindingSlotCountLocked(layout) ||
+                    (bindingDraft[layout.cardId]?.length ?? 1) <= 1
+                  "
                   @click.stop="
                     emit('remove-binding-slot', layout.cardId, bindingIndex)
                   "
@@ -221,7 +229,7 @@ const emit = defineEmits<{
         :loading="saving"
         @click="emit('save-binding-draft')"
       >
-        紐付けを保存
+        保存
       </v-btn>
     </div>
   </aside>
