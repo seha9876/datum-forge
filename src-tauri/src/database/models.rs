@@ -252,6 +252,10 @@ pub struct ViewLayoutCardItem {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
     pub has_override: bool,
 }
 
@@ -291,6 +295,10 @@ pub struct ViewLayoutTemplateCard {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -675,6 +683,10 @@ pub struct SaveViewLayoutCardItem {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
 }
 
 #[derive(Debug, Deserialize)]

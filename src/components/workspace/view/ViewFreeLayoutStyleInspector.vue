@@ -8,7 +8,10 @@ import type {
   LayoutStyleKey,
   LayoutStyleValue
 } from "./ViewFreeLayoutCanvas.helpers";
-import type { ViewLayoutCardItem } from "../../../types";
+import type {
+  ViewLayoutAutoHeightBehavior,
+  ViewLayoutCardItem
+} from "../../../types";
 
 type TemplateSlotListItem = {
   autoName: string;
@@ -26,13 +29,20 @@ type TemplateSlotContextMenuTarget = {
 
 const props = defineProps<{
   addTemplateSlot: (cardId: number) => void;
+  applyAutoHeightEnabledFromCheckbox: (value: boolean | null) => void;
   applyBackgroundColorMode: (mode: "color" | "transparent") => void;
   applyFontWeightFromCheckbox: (value: boolean | null) => void;
+  applyMaxAutoHeightBehavior: (
+    value: ViewLayoutAutoHeightBehavior | null
+  ) => void;
+  applyMaxAutoHeightFromInput: (event: unknown) => void;
   applyNumberStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
   applyPresetId: (presetId: string | null) => void;
+  applyPushDownSiblingsFromCheckbox: (value: boolean | null) => void;
   applySelectedStyle: (key: LayoutStyleKey, value: LayoutStyleValue) => void;
   applyShowLabelFromCheckbox: (value: boolean | null) => void;
   applyStyleFromInput: (key: LayoutStyleKey, event: unknown) => void;
+  autoHeightEnabledValue: boolean;
   backgroundColorDisabled: boolean;
   backgroundColorDisabledReason: string;
   backgroundColorInputValue: () => string;
@@ -40,6 +50,9 @@ const props = defineProps<{
   hasRecordOverrides: boolean;
   isTemplateMode: boolean;
   isTransparentBackgroundSelected: () => boolean;
+  maxAutoHeightBehaviorValue: ViewLayoutAutoHeightBehavior | null;
+  maxAutoHeightInputValue: number | "";
+  pushDownSiblingsValue: boolean;
   removeTemplateSlot: (cardId: number, index: number) => void;
   reorderTemplateSlots: (cardId: number, orderedSlotIds: number[]) => void;
   resetRecordOverrides: () => void;
@@ -67,6 +80,28 @@ const contextMenuOpen = ref(false);
 const contextMenuTarget = ref<[number, number]>([0, 0]);
 const contextMenuSlotKey = ref<TemplateSlotContextMenuTarget>(null);
 
+const heightBehaviorOptions: Array<{
+  icon: string;
+  tooltip: string;
+  value: ViewLayoutAutoHeightBehavior;
+}> = [
+  {
+    icon: "mdi-arrow-collapse-vertical",
+    tooltip: "最大高さを超えたら文字を縮小して全体を表示",
+    value: "scaleToFit"
+  },
+  {
+    icon: "mdi-scroll",
+    tooltip: "最大高さを超えたらカード内をスクロールして表示",
+    value: "scroll"
+  },
+  {
+    icon: "mdi-format-vertical-align-bottom",
+    tooltip: "最大高さを超えたら末尾を省略して表示",
+    value: "truncate"
+  }
+];
+
 watch(
   () => props.templateSlotItems,
   (slotItems) => {
@@ -76,6 +111,9 @@ watch(
 );
 
 const canAddTemplateSlot = computed(() => props.selectedLayouts.length > 0);
+const autoHeightSettingsDisabled = computed(
+  () => !props.autoHeightEnabledValue
+);
 const templateSlotCount = computed(() => props.templateSlotItems.length);
 const selectedSlotStatusMeta = computed(() =>
   props.selectedSlotItem?.isBound && props.selectedSlotItem.label
@@ -255,7 +293,7 @@ async function confirmRemoveSlotFromMenu() {
           <div class="view-slot-chip-strip-fade end" />
         </div>
         <p v-if="templateSlotItems.length === 0" class="view-empty-hint mb-0">
-          まだスロットはありません。カードを選択して追加してください。
+          まだスロットがありません。カードを選択して追加してください。
         </p>
 
         <section class="view-slot-detail-panel">
@@ -334,6 +372,76 @@ async function confirmRemoveSlotFromMenu() {
           @update:model-value="applyPresetId"
         />
       </label>
+
+      <div class="view-style-section">
+        <div class="view-style-section-heading">
+          <strong>高さ挙動</strong>
+          <span>内容量に応じた表示</span>
+        </div>
+
+        <v-switch
+          color="primary"
+          density="compact"
+          hide-details
+          :model-value="autoHeightEnabledValue"
+          label="高さ自動拡張"
+          @update:model-value="applyAutoHeightEnabledFromCheckbox"
+        />
+
+        <v-checkbox
+          class="view-style-check"
+          color="primary"
+          density="compact"
+          hide-details
+          :disabled="autoHeightSettingsDisabled"
+          :model-value="pushDownSiblingsValue"
+          label="下方向へ押し出し"
+          @update:model-value="applyPushDownSiblingsFromCheckbox"
+        />
+
+        <label class="view-style-control">
+          <span>最大高さ</span>
+          <input
+            type="number"
+            min="64"
+            step="1"
+            :disabled="autoHeightSettingsDisabled"
+            :value="maxAutoHeightInputValue"
+            placeholder="上限なし"
+            @change="applyMaxAutoHeightFromInput"
+          />
+        </label>
+
+        <div class="view-style-control">
+          <span>最大高さ超過時</span>
+          <v-btn-toggle
+            :disabled="autoHeightSettingsDisabled"
+            :model-value="maxAutoHeightBehaviorValue"
+            divided
+            mandatory
+            color="primary"
+            variant="tonal"
+            rounded="lg"
+            density="comfortable"
+            class="view-style-icon-toggle d-flex ga-1 pa-1"
+            @update:model-value="applyMaxAutoHeightBehavior"
+          >
+            <v-tooltip
+              v-for="option in heightBehaviorOptions"
+              :key="option.value"
+              :text="option.tooltip"
+              location="bottom"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <v-btn v-bind="tooltipProps" :value="option.value" icon>
+                  <v-icon :icon="option.icon" />
+                </v-btn>
+              </template>
+            </v-tooltip>
+          </v-btn-toggle>
+        </div>
+      </div>
+
       <label class="view-style-control view-background-control">
         <span>背景色</span>
         <div class="view-background-row">
@@ -358,6 +466,7 @@ async function confirmRemoveSlotFromMenu() {
           {{ backgroundColorDisabledReason }}
         </small>
       </label>
+
       <label class="view-style-control">
         <span>文字色</span>
         <input
@@ -382,6 +491,7 @@ async function confirmRemoveSlotFromMenu() {
           @change="applyNumberStyleFromInput('fontSize', $event)"
         />
       </label>
+
       <div class="view-style-control view-padding-control">
         <span>余白</span>
         <div class="view-padding-grid">
@@ -435,6 +545,7 @@ async function confirmRemoveSlotFromMenu() {
           </label>
         </div>
       </div>
+
       <label class="view-style-control">
         <span>角丸</span>
         <input
@@ -484,6 +595,7 @@ async function confirmRemoveSlotFromMenu() {
           <v-btn value="right">右</v-btn>
         </v-btn-toggle>
       </div>
+
       <v-checkbox
         class="view-style-check"
         color="primary"
@@ -503,6 +615,7 @@ async function confirmRemoveSlotFromMenu() {
         label="カラム名を表示"
         @update:model-value="applyShowLabelFromCheckbox"
       />
+
       <div v-if="!isTemplateMode" class="view-style-action-group">
         <button
           type="button"
@@ -510,7 +623,7 @@ async function confirmRemoveSlotFromMenu() {
           :disabled="!selectedCardHasOverride"
           @click="resetSelectedCardOverride"
         >
-          このカードだけ解除
+          このカードだけ元に戻す
         </button>
         <button
           type="button"
@@ -518,9 +631,10 @@ async function confirmRemoveSlotFromMenu() {
           :disabled="!hasRecordOverrides"
           @click="resetRecordOverrides"
         >
-          個別調整を全解除
+          個別差分をすべて解除
         </button>
       </div>
+
       <button
         type="button"
         class="view-style-reset-button"

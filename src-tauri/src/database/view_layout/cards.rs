@@ -36,7 +36,11 @@ impl Db {
               card.padding_bottom,
               card.padding_left,
               card.border_radius,
-              card.show_label
+              card.show_label,
+              card.auto_height_enabled,
+              card.push_down_siblings,
+              card.max_auto_height,
+              card.max_auto_height_behavior
             FROM view_layout_template_cards card
             WHERE card.template_id = ?
             ORDER BY card.sort_order, card.card_id
@@ -67,6 +71,10 @@ impl Db {
                 padding_left: row.get(18)?,
                 border_radius: row.get(19)?,
                 show_label: row.get::<_, Option<i64>>(20)?.map(|value| value != 0),
+                auto_height_enabled: row.get::<_, i64>(21)? != 0,
+                push_down_siblings: row.get::<_, i64>(22)? != 0,
+                max_auto_height: row.get(23)?,
+                max_auto_height_behavior: row.get(24)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
@@ -138,8 +146,10 @@ impl Db {
                   background_color, text_color, font_size, text_direction,
                   font_weight, text_align, padding, padding_top, padding_right,
                   padding_bottom, padding_left, border_radius, show_label,
+                  auto_height_enabled, push_down_siblings, max_auto_height,
+                  max_auto_height_behavior,
                   sort_order, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(card_id) DO UPDATE SET
                   preset_id = excluded.preset_id,
                   x = excluded.x,
@@ -160,6 +170,10 @@ impl Db {
                   padding_left = excluded.padding_left,
                   border_radius = excluded.border_radius,
                   show_label = excluded.show_label,
+                  auto_height_enabled = excluded.auto_height_enabled,
+                  push_down_siblings = excluded.push_down_siblings,
+                  max_auto_height = excluded.max_auto_height,
+                  max_auto_height_behavior = excluded.max_auto_height_behavior,
                   sort_order = excluded.sort_order,
                   updated_at = CURRENT_TIMESTAMP
                 ",
@@ -185,6 +199,10 @@ impl Db {
                     item.padding_left,
                     item.border_radius,
                     item.show_label.map(bool_to_i64),
+                    bool_to_i64(item.auto_height_enabled),
+                    bool_to_i64(item.push_down_siblings),
+                    item.max_auto_height,
+                    item.max_auto_height_behavior,
                     sort_order
                 ],
             )?;
@@ -198,8 +216,10 @@ impl Db {
               background_color, text_color, font_size, text_direction,
               font_weight, text_align, padding, padding_top, padding_right,
               padding_bottom, padding_left, border_radius, show_label,
+              auto_height_enabled, push_down_siblings, max_auto_height,
+              max_auto_height_behavior,
               sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ",
             params![
                 template_id,
@@ -222,6 +242,10 @@ impl Db {
                 item.padding_left,
                 item.border_radius,
                 item.show_label.map(bool_to_i64),
+                bool_to_i64(item.auto_height_enabled),
+                bool_to_i64(item.push_down_siblings),
+                item.max_auto_height,
+                item.max_auto_height_behavior,
                 sort_order
             ],
         )?;
@@ -239,7 +263,9 @@ impl Db {
                 SELECT card_id, preset_id, x, y, width, height, visible,
                        background_color, text_color, font_size, text_direction,
                        font_weight, text_align, padding, padding_top, padding_right,
-                       padding_bottom, padding_left, border_radius, show_label
+                       padding_bottom, padding_left, border_radius, show_label,
+                       auto_height_enabled, push_down_siblings, max_auto_height,
+                       max_auto_height_behavior
                 FROM view_layout_template_cards
                 WHERE template_id = ? AND card_id = ?
                 ",
@@ -266,6 +292,10 @@ impl Db {
                         padding_left: row.get(17)?,
                         border_radius: row.get(18)?,
                         show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                        auto_height_enabled: row.get::<_, i64>(20)? != 0,
+                        push_down_siblings: row.get::<_, i64>(21)? != 0,
+                        max_auto_height: row.get(22)?,
+                        max_auto_height_behavior: row.get(23)?,
                     })
                 },
             )

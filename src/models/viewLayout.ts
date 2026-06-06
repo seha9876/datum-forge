@@ -1,3 +1,5 @@
+export type ViewLayoutAutoHeightBehavior = "scaleToFit" | "scroll" | "truncate";
+
 export interface ViewLayoutCardItem {
   tableId: number;
   cardId: number;
@@ -23,6 +25,10 @@ export interface ViewLayoutCardItem {
   paddingLeft?: number | null;
   borderRadius?: number | null;
   showLabel?: boolean | null;
+  autoHeightEnabled: boolean;
+  pushDownSiblings: boolean;
+  maxAutoHeight?: number | null;
+  maxAutoHeightBehavior: ViewLayoutAutoHeightBehavior;
   hasOverride: boolean;
 }
 
@@ -69,6 +75,10 @@ export interface ViewLayoutTemplateCard {
   paddingLeft?: number | null;
   borderRadius?: number | null;
   showLabel?: boolean | null;
+  autoHeightEnabled: boolean;
+  pushDownSiblings: boolean;
+  maxAutoHeight?: number | null;
+  maxAutoHeightBehavior: ViewLayoutAutoHeightBehavior;
 }
 
 export interface ResolvedViewFieldLayout {

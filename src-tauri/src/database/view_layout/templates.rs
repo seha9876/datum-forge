@@ -138,7 +138,9 @@ impl Db {
             SELECT card_id, preset_id, x, y, width, height, visible,
                    background_color, text_color, font_size, text_direction,
                    font_weight, text_align, padding, padding_top, padding_right,
-                   padding_bottom, padding_left, border_radius, show_label, sort_order
+                   padding_bottom, padding_left, border_radius, show_label,
+                   auto_height_enabled, push_down_siblings, max_auto_height,
+                   max_auto_height_behavior, sort_order
             FROM view_layout_template_cards
             WHERE template_id = ?
             ORDER BY sort_order, card_id
@@ -169,8 +171,12 @@ impl Db {
                         padding_left: row.get(17)?,
                         border_radius: row.get(18)?,
                         show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                        auto_height_enabled: row.get::<_, i64>(20)? != 0,
+                        push_down_siblings: row.get::<_, i64>(21)? != 0,
+                        max_auto_height: row.get(22)?,
+                        max_auto_height_behavior: row.get(23)?,
                     },
-                    row.get::<_, i64>(20)?,
+                    row.get::<_, i64>(24)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;

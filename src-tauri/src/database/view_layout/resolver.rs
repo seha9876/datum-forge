@@ -50,6 +50,10 @@ impl Db {
               COALESCE(override.padding_left, card.padding_left),
               COALESCE(override.border_radius, card.border_radius),
               COALESCE(override.show_label, card.show_label),
+              card.auto_height_enabled,
+              card.push_down_siblings,
+              card.max_auto_height,
+              card.max_auto_height_behavior,
               override.card_id IS NOT NULL
             FROM view_layout_template_cards card
             LEFT JOIN view_layout_card_overrides override
@@ -87,7 +91,11 @@ impl Db {
                 padding_left: row.get(18)?,
                 border_radius: row.get(19)?,
                 show_label: row.get::<_, Option<i64>>(20)?.map(|value| value != 0),
-                has_override: row.get::<_, bool>(21)?,
+                auto_height_enabled: row.get::<_, i64>(21)? != 0,
+                push_down_siblings: row.get::<_, i64>(22)? != 0,
+                max_auto_height: row.get(23)?,
+                max_auto_height_behavior: row.get(24)?,
+                has_override: row.get::<_, bool>(25)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch
+} from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
@@ -9,6 +16,7 @@ import ViewFreeLayoutBindingPanel from "./ViewFreeLayoutBindingPanel.vue";
 import {
   boxFromPoints,
   clampViewportScale,
+  DEFAULT_CARD_STYLE,
   DRAG_THRESHOLD,
   intersects,
   MIN_CARD_HEIGHT,
@@ -38,6 +46,7 @@ import type {
   AppColumn,
   TableDetail,
   TemplatePreviewRecordSelection,
+  ViewLayoutAutoHeightBehavior,
   ViewLayoutCardItem,
   ViewLayoutCardColumnBinding,
   ViewLayoutTemplate,
@@ -59,6 +68,14 @@ type TemplateSlotListItem = {
 type SelectedTemplateSlotKey = {
   cardId: number;
   slotId: number;
+};
+
+type RenderedViewLayoutCardItem = ViewLayoutCardItem & {
+  renderBaseHeight: number;
+  renderBodyMode: "normal" | "scaleToFit" | "scroll" | "truncate";
+  renderContentScale: number;
+  renderContentViewportHeight: number | null;
+  renderNaturalHeight: number | null;
 };
 const props = withDefaults(
   defineProps<{
@@ -123,6 +140,8 @@ const isBindingEditorOpen = ref(false);
 const bindingDraft = ref<Record<number, Array<number | null>>>({});
 const selectedBindingCardId = ref<number | null>(null);
 const selectedTemplateSlotKey = ref<SelectedTemplateSlotKey | null>(null);
+const cardContentMeasureElements = new Map<number, HTMLElement>();
+const measuredCardContentHeights = ref<Record<number, number>>({});
 const templatePreviewMenuOpen = ref(false);
 const viewportPercent = computed(() => Math.round(viewportScale.value * 100));
 const isTemplateMode = computed(() => props.editorMode === "template");
@@ -185,6 +204,17 @@ const visibleLayouts = computed(() =>
     return isBoundToCurrentTable(item) && (item.visible || editMode.value);
   })
 );
+const shouldMeasureAutoHeight = computed(() => {
+  if (isBindingEditorVisible.value) {
+    return false;
+  }
+
+  if (isTemplateMode.value) {
+    return isTemplatePreviewActive.value && currentRecord.value !== null;
+  }
+
+  return currentRecord.value !== null;
+});
 const selectedLayouts = computed(() =>
   visibleLayouts.value.filter((layout) => isSelected(layout.cardId))
 );
@@ -238,10 +268,13 @@ const isBindingEditorVisible = computed(
 const shouldRenderCardContent = computed(
   () => editMode.value || isTemplatePreviewActive.value
 );
+const renderedVisibleLayouts = computed<RenderedViewLayoutCardItem[]>(() =>
+  buildRenderedLayouts(visibleLayouts.value)
+);
 const canvasLayouts = computed(() =>
   isBindingEditorVisible.value
     ? bindableTemplateLayouts.value
-    : visibleLayouts.value
+    : renderedVisibleLayouts.value
 );
 const bindingColumnItems = computed(() =>
   displayColumns.value.map((column) => ({
@@ -470,6 +503,14 @@ watch(isBindingEditorVisible, (visible) => {
 
   selectedBindingCardId.value = null;
 });
+watch(
+  [canvasLayouts, currentRecord, shouldMeasureAutoHeight, () => editMode.value],
+  async () => {
+    await nextTick();
+    measureCardContentHeights();
+  },
+  { deep: true, immediate: true }
+);
 onMounted(() => {
   globalThis.addEventListener?.("keydown", handleKeyDown);
   globalThis.addEventListener?.("keyup", handleKeyUp);
@@ -901,6 +942,12 @@ function shouldShowLabel(layout: ViewLayoutCardItem) {
   return layoutStyleValue(layout, "showLabel") !== false;
 }
 
+function baseLayoutForCard(cardId: number, fallback: ViewLayoutCardItem) {
+  return (
+    visibleLayouts.value.find((item) => item.cardId === cardId) ?? fallback
+  );
+}
+
 function normalizedPresetId(layout: { presetId?: string | null }) {
   return isKnownCardPresetId(layout.presetId)
     ? (layout.presetId ?? null)
@@ -1043,6 +1090,279 @@ function updateLayout(item: ViewLayoutCardItem, save: boolean) {
   updateLayouts([item], save);
 }
 
+function sharedLayoutProperty<T>(
+  selector: (layout: ViewLayoutCardItem) => T
+): T | "" {
+  const [firstLayout, ...restLayouts] = selectedLayouts.value;
+  if (!firstLayout) {
+    return "";
+  }
+
+  const firstValue = selector(firstLayout);
+  const hasMixedValues = restLayouts.some(
+    (layout) => selector(layout) !== firstValue
+  );
+  return hasMixedValues ? "" : firstValue;
+}
+
+const autoHeightEnabledInspectorValue = computed(
+  () => sharedLayoutProperty((layout) => layout.autoHeightEnabled) === true
+);
+const pushDownSiblingsInspectorValue = computed(
+  () => sharedLayoutProperty((layout) => layout.pushDownSiblings) === true
+);
+const maxAutoHeightInspectorValue = computed<number | "">(() => {
+  const value = sharedLayoutProperty((layout) => layout.maxAutoHeight ?? null);
+  return typeof value === "number" ? value : "";
+});
+const maxAutoHeightBehaviorInspectorValue =
+  computed<ViewLayoutAutoHeightBehavior | null>(() => {
+    const value = sharedLayoutProperty(
+      (layout) => layout.maxAutoHeightBehavior
+    );
+    return value === "" ? null : value;
+  });
+
+function updateSelectedLayouts(
+  updater: (layout: ViewLayoutCardItem) => ViewLayoutCardItem
+) {
+  if (selectedLayouts.value.length === 0) {
+    return;
+  }
+
+  updateLayouts(selectedLayouts.value.map(updater), true);
+}
+
+function applyAutoHeightEnabledFromCheckbox(value: boolean | null) {
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    autoHeightEnabled: value === true
+  }));
+}
+
+function applyPushDownSiblingsFromCheckbox(value: boolean | null) {
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    pushDownSiblings: value === true
+  }));
+}
+
+function applyMaxAutoHeightFromInput(event: unknown) {
+  const value = Number(
+    (event as { target?: { value?: string } }).target?.value
+  );
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    maxAutoHeight: Number.isFinite(value) && value > 0 ? value : null
+  }));
+}
+
+function applyMaxAutoHeightBehavior(
+  value: ViewLayoutAutoHeightBehavior | null
+) {
+  if (!value) {
+    return;
+  }
+
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    maxAutoHeightBehavior: value
+  }));
+}
+
+function setCardContentMeasureElement(cardId: number, element: unknown) {
+  if (element instanceof HTMLElement) {
+    cardContentMeasureElements.set(cardId, element);
+    return;
+  }
+
+  cardContentMeasureElements.delete(cardId);
+  if (cardId in measuredCardContentHeights.value) {
+    const next = { ...measuredCardContentHeights.value };
+    delete next[cardId];
+    measuredCardContentHeights.value = next;
+  }
+}
+
+function measureCardContentHeights() {
+  const nextEntries = [...cardContentMeasureElements.entries()].map(
+    ([cardId, element]) => [cardId, Math.ceil(element.scrollHeight)] as const
+  );
+  const nextHeights = Object.fromEntries(nextEntries);
+  if (
+    JSON.stringify(nextHeights) ===
+    JSON.stringify(measuredCardContentHeights.value)
+  ) {
+    return;
+  }
+  measuredCardContentHeights.value = nextHeights;
+}
+
+function horizontalRangesOverlap(
+  left: Pick<ViewLayoutCardItem, "x" | "width">,
+  right: Pick<ViewLayoutCardItem, "x" | "width">
+) {
+  return left.x < right.x + right.width && left.x + left.width > right.x;
+}
+
+function resolvedPaddingValue(
+  layout: ViewLayoutCardItem,
+  key: "paddingTop" | "paddingBottom"
+) {
+  const sideValue = layout[key];
+  if (typeof sideValue === "number") {
+    return sideValue;
+  }
+  if (typeof layout.padding === "number") {
+    return layout.padding;
+  }
+  return DEFAULT_CARD_STYLE[key];
+}
+
+function naturalCardHeight(layout: ViewLayoutCardItem) {
+  if (!shouldMeasureAutoHeight.value || !layout.autoHeightEnabled) {
+    return null;
+  }
+
+  const contentHeight = measuredCardContentHeights.value[layout.cardId];
+  if (!Number.isFinite(contentHeight)) {
+    return null;
+  }
+
+  const paddingTop = resolvedPaddingValue(layout, "paddingTop");
+  const paddingBottom = resolvedPaddingValue(layout, "paddingBottom");
+  return contentHeight + paddingTop + paddingBottom;
+}
+
+function buildRenderedLayouts(
+  layouts: ViewLayoutCardItem[]
+): RenderedViewLayoutCardItem[] {
+  const rendered = layouts.map((layout) => {
+    const baseHeight = layout.height;
+    const naturalHeight = naturalCardHeight(layout);
+    const expandedHeight =
+      layout.autoHeightEnabled && naturalHeight !== null
+        ? Math.max(baseHeight, naturalHeight)
+        : baseHeight;
+    const maxAutoHeight =
+      typeof layout.maxAutoHeight === "number" && layout.maxAutoHeight > 0
+        ? Math.max(baseHeight, layout.maxAutoHeight)
+        : null;
+    const displayHeight =
+      maxAutoHeight === null
+        ? expandedHeight
+        : Math.min(expandedHeight, maxAutoHeight);
+    const bodyViewportHeight = Math.max(
+      0,
+      displayHeight -
+        resolvedPaddingValue(layout, "paddingTop") -
+        resolvedPaddingValue(layout, "paddingBottom")
+    );
+    const measuredContentHeight =
+      measuredCardContentHeights.value[layout.cardId];
+    const isOverflowing =
+      layout.autoHeightEnabled &&
+      maxAutoHeight !== null &&
+      expandedHeight > maxAutoHeight &&
+      Number.isFinite(measuredContentHeight) &&
+      measuredContentHeight > bodyViewportHeight;
+    const renderBodyMode = isOverflowing
+      ? layout.maxAutoHeightBehavior
+      : "normal";
+    const renderContentScale =
+      renderBodyMode === "scaleToFit" &&
+      Number.isFinite(measuredContentHeight) &&
+      measuredContentHeight > 0
+        ? Math.min(1, bodyViewportHeight / measuredContentHeight)
+        : 1;
+
+    return {
+      ...layout,
+      height: displayHeight,
+      renderBaseHeight: baseHeight,
+      renderBodyMode,
+      renderContentScale,
+      renderContentViewportHeight:
+        renderBodyMode === "normal" ? null : bodyViewportHeight,
+      renderNaturalHeight: naturalHeight
+    } satisfies RenderedViewLayoutCardItem;
+  });
+
+  const ordered = [...rendered].sort(
+    (left, right) =>
+      left.y - right.y || left.x - right.x || left.cardId - right.cardId
+  );
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    if (
+      !current.autoHeightEnabled ||
+      !current.pushDownSiblings ||
+      current.height <= current.renderBaseHeight
+    ) {
+      continue;
+    }
+
+    const currentBottom = current.y + current.height;
+    for (
+      let followerIndex = index + 1;
+      followerIndex < ordered.length;
+      followerIndex += 1
+    ) {
+      const follower = ordered[followerIndex];
+      if (!horizontalRangesOverlap(current, follower)) {
+        continue;
+      }
+      if (follower.y >= currentBottom || follower.y < current.y) {
+        continue;
+      }
+
+      follower.y = currentBottom;
+    }
+  }
+
+  return rendered;
+}
+
+function cardContentBodyClass(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+) {
+  const mode = "renderBodyMode" in layout ? layout.renderBodyMode : "normal";
+  return {
+    "is-scrollable": mode === "scroll",
+    "is-truncated": mode === "truncate"
+  };
+}
+
+function cardContentBodyStyle(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+): CSSProperties {
+  return {
+    maxHeight:
+      "renderContentViewportHeight" in layout &&
+      layout.renderContentViewportHeight !== null
+        ? `${layout.renderContentViewportHeight}px`
+        : undefined
+  };
+}
+
+function cardContentInnerStyle(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+): CSSProperties {
+  if (!("renderBodyMode" in layout) || layout.renderBodyMode !== "scaleToFit") {
+    return {};
+  }
+
+  return {
+    transform: `scale(${layout.renderContentScale})`,
+    transformOrigin: "top left",
+    width:
+      layout.renderContentScale > 0
+        ? `${100 / layout.renderContentScale}%`
+        : "100%"
+  };
+}
+
 const {
   applyBackgroundColorMode,
   applyFontWeightFromCheckbox,
@@ -1113,7 +1433,7 @@ function setSingleSelection(cardId: number) {
 }
 
 function setSelection(cardIds: number[]) {
-  const validIds = new Set(visibleLayouts.value.map((layout) => layout.cardId));
+  const validIds = new Set(canvasLayouts.value.map((layout) => layout.cardId));
   selectedCardIds.value = [...new Set(cardIds)].filter((cardId) =>
     validIds.has(cardId)
   );
@@ -1358,7 +1678,7 @@ function endPointer() {
 }
 
 function idsInSelectionBox(box: SelectionBox) {
-  return visibleLayouts.value
+  return canvasLayouts.value
     .filter((layout) =>
       intersects(box, {
         height: layout.height,
@@ -1498,6 +1818,10 @@ function addTemplateCard() {
     paddingLeft: null,
     borderRadius: null,
     showLabel: null,
+    autoHeightEnabled: false,
+    pushDownSiblings: false,
+    maxAutoHeight: null,
+    maxAutoHeightBehavior: "scaleToFit",
     hasOverride: false
   };
   draftLayouts.value = [...draftLayouts.value, next];
@@ -1541,6 +1865,10 @@ function templateCardToLayout(
     paddingLeft: card.paddingLeft,
     borderRadius: card.borderRadius,
     showLabel: card.showLabel,
+    autoHeightEnabled: card.autoHeightEnabled,
+    pushDownSiblings: card.pushDownSiblings,
+    maxAutoHeight: card.maxAutoHeight ?? null,
+    maxAutoHeightBehavior: card.maxAutoHeightBehavior,
     hasOverride: false
   };
 }
@@ -1573,7 +1901,11 @@ function layoutToTemplateCard(
     paddingBottom: layout.paddingBottom,
     paddingLeft: layout.paddingLeft,
     borderRadius: layout.borderRadius,
-    showLabel: layout.showLabel
+    showLabel: layout.showLabel,
+    autoHeightEnabled: layout.autoHeightEnabled,
+    pushDownSiblings: layout.pushDownSiblings,
+    maxAutoHeight: layout.maxAutoHeight ?? null,
+    maxAutoHeightBehavior: layout.maxAutoHeightBehavior
   };
 }
 </script>
@@ -1659,7 +1991,11 @@ function layoutToTemplateCard(
             @pointerdown.stop="
               isBindingEditorVisible
                 ? selectBindingCard(layout.cardId)
-                : startCardPointer($event, layout.cardId, layout)
+                : startCardPointer(
+                    $event,
+                    layout.cardId,
+                    baseLayoutForCard(layout.cardId, layout)
+                  )
             "
             @pointermove="
               movePointer($event);
@@ -1736,42 +2072,57 @@ function layoutToTemplateCard(
                 :class="{ 'hide-label': !shouldShowLabel(layout) }"
                 :style="cardContentStyle(layout)"
               >
-                <div class="view-field-card-stack">
+                <div
+                  class="view-field-card-body"
+                  :class="cardContentBodyClass(layout)"
+                  :style="cardContentBodyStyle(layout)"
+                >
                   <div
-                    v-for="entry in fieldEntriesByLayout(layout)"
-                    :key="entry.key"
-                    class="view-field-card-row"
+                    :ref="
+                      (element) =>
+                        setCardContentMeasureElement(layout.cardId, element)
+                    "
+                    class="view-field-card-body-inner"
+                    :style="cardContentInnerStyle(layout)"
                   >
-                    <div
-                      v-if="shouldShowLabel(layout)"
-                      class="view-field-card-header"
-                    >
-                      <span>{{ entry.label }}</span>
+                    <div class="view-field-card-stack">
+                      <div
+                        v-for="entry in fieldEntriesByLayout(layout)"
+                        :key="entry.key"
+                        class="view-field-card-row"
+                      >
+                        <div
+                          v-if="shouldShowLabel(layout)"
+                          class="view-field-card-header"
+                        >
+                          <span>{{ entry.label }}</span>
+                        </div>
+                        <p class="view-field-card-value">
+                          {{ entry.value }}
+                        </p>
+                      </div>
+                      <p
+                        v-if="
+                          isTemplateMode &&
+                          !isTemplatePreviewActive &&
+                          fieldEntriesByLayout(layout).length === 0
+                        "
+                        class="view-field-card-value"
+                      >
+                        カード枠
+                      </p>
+                      <p
+                        v-else-if="
+                          isTemplateMode &&
+                          isTemplatePreviewActive &&
+                          fieldEntriesByLayout(layout).length === 0
+                        "
+                        class="view-field-card-value"
+                      >
+                        一時紐付けなし
+                      </p>
                     </div>
-                    <p class="view-field-card-value">
-                      {{ entry.value }}
-                    </p>
                   </div>
-                  <p
-                    v-if="
-                      isTemplateMode &&
-                      !isTemplatePreviewActive &&
-                      fieldEntriesByLayout(layout).length === 0
-                    "
-                    class="view-field-card-value"
-                  >
-                    カード枠
-                  </p>
-                  <p
-                    v-else-if="
-                      isTemplateMode &&
-                      isTemplatePreviewActive &&
-                      fieldEntriesByLayout(layout).length === 0
-                    "
-                    class="view-field-card-value"
-                  >
-                    一時紐付けなし
-                  </p>
                 </div>
               </div>
             </template>
@@ -1793,7 +2144,7 @@ function layoutToTemplateCard(
                       startResize(
                         $event,
                         layout.cardId,
-                        layout,
+                        baseLayoutForCard(layout.cardId, layout),
                         handle.direction
                       )
                     "
@@ -1868,12 +2219,21 @@ function layoutToTemplateCard(
         v-else-if="editMode"
         :add-template-slot="addTemplateSlot"
         :apply-background-color-mode="applyBackgroundColorModeWithPolicy"
+        :apply-auto-height-enabled-from-checkbox="
+          applyAutoHeightEnabledFromCheckbox
+        "
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
+        :apply-max-auto-height-behavior="applyMaxAutoHeightBehavior"
+        :apply-max-auto-height-from-input="applyMaxAutoHeightFromInput"
         :apply-number-style-from-input="applyNumberStyleFromInput"
         :apply-preset-id="applyPresetId"
+        :apply-push-down-siblings-from-checkbox="
+          applyPushDownSiblingsFromCheckbox
+        "
         :apply-selected-style="applySelectedStyle"
         :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
         :apply-style-from-input="applyStyleFromInputWithPolicy"
+        :auto-height-enabled-value="autoHeightEnabledInspectorValue"
         :background-color-disabled="backgroundColorEditingDisabled"
         :background-color-disabled-reason="backgroundColorDisabledReason"
         :background-color-input-value="backgroundColorInputValue"
@@ -1881,6 +2241,9 @@ function layoutToTemplateCard(
         :has-record-overrides="hasRecordOverrides"
         :is-template-mode="isTemplateMode"
         :is-transparent-background-selected="isTransparentBackgroundSelected"
+        :max-auto-height-behavior-value="maxAutoHeightBehaviorInspectorValue"
+        :max-auto-height-input-value="maxAutoHeightInspectorValue"
+        :push-down-siblings-value="pushDownSiblingsInspectorValue"
         :remove-template-slot="removeTemplateSlot"
         :reorder-template-slots="reorderTemplateSlots"
         :reset-record-overrides="resetRecordOverrides"

@@ -190,6 +190,10 @@ impl Db {
               padding_left REAL,
               border_radius REAL,
               show_label INTEGER,
+              auto_height_enabled INTEGER NOT NULL DEFAULT 0,
+              push_down_siblings INTEGER NOT NULL DEFAULT 0,
+              max_auto_height REAL,
+              max_auto_height_behavior TEXT NOT NULL DEFAULT 'scaleToFit',
               sort_order INTEGER NOT NULL DEFAULT 0,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(template_id) REFERENCES view_layout_templates(id)
@@ -252,6 +256,7 @@ impl Db {
         )?;
         self.migrate_record_tag_group_links()?;
         self.migrate_view_layout_template_card_preset_id()?;
+        self.migrate_view_layout_template_card_auto_height_settings()?;
         Ok(())
     }
 
@@ -269,12 +274,10 @@ impl Db {
     }
 
     fn migrate_view_layout_template_card_preset_id(&self) -> Result<(), DbError> {
-        let has_preset_id = self
-            .conn
-            .prepare("PRAGMA table_info(view_layout_template_cards)")?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
+        let column_names = self
+            .view_layout_template_card_column_names()?;
+        let has_preset_id = column_names
+            .iter()
             .any(|column_name| column_name == "preset_id");
 
         if !has_preset_id {
@@ -285,5 +288,46 @@ impl Db {
         }
 
         Ok(())
+    }
+
+    fn migrate_view_layout_template_card_auto_height_settings(
+        &self,
+    ) -> Result<(), DbError> {
+        let column_names = self.view_layout_template_card_column_names()?;
+        let pending_columns = [
+            (
+                "auto_height_enabled",
+                "ALTER TABLE view_layout_template_cards ADD COLUMN auto_height_enabled INTEGER NOT NULL DEFAULT 0",
+            ),
+            (
+                "push_down_siblings",
+                "ALTER TABLE view_layout_template_cards ADD COLUMN push_down_siblings INTEGER NOT NULL DEFAULT 0",
+            ),
+            (
+                "max_auto_height",
+                "ALTER TABLE view_layout_template_cards ADD COLUMN max_auto_height REAL",
+            ),
+            (
+                "max_auto_height_behavior",
+                "ALTER TABLE view_layout_template_cards ADD COLUMN max_auto_height_behavior TEXT NOT NULL DEFAULT 'scaleToFit'",
+            ),
+        ];
+
+        for (column_name, statement) in pending_columns {
+            if column_names.iter().any(|existing| existing == column_name) {
+                continue;
+            }
+            self.conn.execute(statement, [])?;
+        }
+
+        Ok(())
+    }
+
+    fn view_layout_template_card_column_names(&self) -> Result<Vec<String>, DbError> {
+        self.conn
+            .prepare("PRAGMA table_info(view_layout_template_cards)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DbError::from)
     }
 }
