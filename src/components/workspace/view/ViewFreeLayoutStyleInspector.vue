@@ -114,6 +114,7 @@ const canAddTemplateSlot = computed(() => props.selectedLayouts.length > 0);
 const autoHeightSettingsDisabled = computed(
   () => !props.autoHeightEnabledValue
 );
+const hasTemplateSlots = computed(() => props.templateSlotItems.length > 0);
 const templateSlotCount = computed(() => props.templateSlotItems.length);
 const selectedSlotStatusMeta = computed(() =>
   props.selectedSlotItem?.isBound && props.selectedSlotItem.label
@@ -292,11 +293,8 @@ async function confirmRemoveSlotFromMenu() {
           </div>
           <div class="view-slot-chip-strip-fade end" />
         </div>
-        <p v-if="templateSlotItems.length === 0" class="view-empty-hint mb-0">
-          まだスロットがありません。カードを選択して追加してください。
-        </p>
 
-        <section class="view-slot-detail-panel">
+        <section v-if="hasTemplateSlots" class="view-slot-detail-panel">
           <div class="view-slot-detail-heading">
             <strong>選択中スロット設定</strong>
             <span>{{
