@@ -79,24 +79,29 @@ const slotChipRailRef = ref<HTMLElement | null>(null);
 const contextMenuOpen = ref(false);
 const contextMenuTarget = ref<[number, number]>([0, 0]);
 const contextMenuSlotKey = ref<TemplateSlotContextMenuTarget>(null);
+const openStyleSections = ref<number[]>([0]);
 
 const heightBehaviorOptions: Array<{
   icon: string;
+  label: string;
   tooltip: string;
   value: ViewLayoutAutoHeightBehavior;
 }> = [
   {
     icon: "mdi-arrow-collapse-vertical",
+    label: "縮小して収める",
     tooltip: "最大高さを超えたら文字を縮小して全体を表示",
     value: "scaleToFit"
   },
   {
     icon: "mdi-scroll",
+    label: "内部スクロール",
     tooltip: "最大高さを超えたらカード内をスクロールして表示",
     value: "scroll"
   },
   {
     icon: "mdi-format-vertical-align-bottom",
+    label: "末尾を省略",
     tooltip: "最大高さを超えたら末尾を省略して表示",
     value: "truncate"
   }
@@ -120,6 +125,16 @@ const selectedSlotStatusMeta = computed(() =>
   props.selectedSlotItem?.isBound && props.selectedSlotItem.label
     ? `表示カラム: ${props.selectedSlotItem.label}`
     : "表示カラムはまだ紐付いていません"
+);
+const autoHeightModeSummary = computed(() =>
+  props.autoHeightEnabledValue
+    ? "内容量に合わせて高さを伸ばします"
+    : "固定高さで表示します"
+);
+const autoHeightSettingHint = computed(() =>
+  props.autoHeightEnabledValue
+    ? "固定高さ向けの設定は無効です。"
+    : "高さ自動拡張が OFF のときに使う設定です。"
 );
 
 function handleTemplateSlotDragEnd() {
@@ -371,275 +386,334 @@ async function confirmRemoveSlotFromMenu() {
         />
       </label>
 
-      <div class="view-style-section">
-        <div class="view-style-section-heading">
-          <strong>高さ挙動</strong>
-          <span>内容量に応じた表示</span>
-        </div>
-
-        <v-switch
-          color="primary"
-          density="compact"
-          hide-details
-          :model-value="autoHeightEnabledValue"
-          label="高さ自動拡張"
-          @update:model-value="applyAutoHeightEnabledFromCheckbox"
-        />
-
-        <v-checkbox
-          class="view-style-check"
-          color="primary"
-          density="compact"
-          hide-details
-          :disabled="autoHeightSettingsDisabled"
-          :model-value="pushDownSiblingsValue"
-          label="下方向へ押し出し"
-          @update:model-value="applyPushDownSiblingsFromCheckbox"
-        />
-
-        <label class="view-style-control">
-          <span>最大高さ</span>
-          <input
-            type="number"
-            min="64"
-            step="1"
-            :disabled="autoHeightSettingsDisabled"
-            :value="maxAutoHeightInputValue"
-            placeholder="上限なし"
-            @change="applyMaxAutoHeightFromInput"
-          />
-        </label>
-
-        <div class="view-style-control">
-          <span>最大高さ超過時</span>
-          <v-btn-toggle
-            :disabled="autoHeightSettingsDisabled"
-            :model-value="maxAutoHeightBehaviorValue"
-            divided
-            mandatory
-            color="primary"
-            variant="tonal"
-            rounded="lg"
-            density="comfortable"
-            class="view-style-icon-toggle d-flex ga-1 pa-1"
-            @update:model-value="applyMaxAutoHeightBehavior"
-          >
-            <v-tooltip
-              v-for="option in heightBehaviorOptions"
-              :key="option.value"
-              :text="option.tooltip"
-              location="bottom"
-            >
-              <template #activator="{ props: tooltipProps }">
-                <v-btn v-bind="tooltipProps" :value="option.value" icon>
-                  <v-icon :icon="option.icon" />
-                </v-btn>
-              </template>
-            </v-tooltip>
-          </v-btn-toggle>
-        </div>
-      </div>
-
-      <label class="view-style-control view-background-control">
-        <span>背景色</span>
-        <div class="view-background-row">
-          <input
-            type="color"
-            :class="{ muted: isTransparentBackgroundSelected() }"
-            :disabled="backgroundColorDisabled"
-            :value="backgroundColorInputValue()"
-            @input="applyStyleFromInput('backgroundColor', $event)"
-          />
-          <button
-            type="button"
-            class="view-background-transparent-button"
-            :class="{ active: isTransparentBackgroundSelected() }"
-            :disabled="backgroundColorDisabled"
-            @click="applyBackgroundColorMode('transparent')"
-          >
-            透明
-          </button>
-        </div>
-        <small v-if="backgroundColorDisabled" class="view-empty-hint">
-          {{ backgroundColorDisabledReason }}
-        </small>
-      </label>
-
-      <label class="view-style-control">
-        <span>文字色</span>
-        <input
-          type="color"
-          :value="
-            styleInputValue('textColor') ||
-            themeColorInputValue('--v-theme-on-surface')
-          "
-          @input="applyStyleFromInput('textColor', $event)"
-        />
-      </label>
-
-      <label class="view-style-control">
-        <span>文字サイズ</span>
-        <input
-          type="number"
-          min="10"
-          max="48"
-          step="1"
-          :value="styleNumberInputValue('fontSize')"
-          placeholder="未設定"
-          @change="applyNumberStyleFromInput('fontSize', $event)"
-        />
-      </label>
-
-      <div class="view-style-control view-padding-control">
-        <span>余白</span>
-        <div class="view-padding-grid">
-          <label>
-            <span>上</span>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              step="1"
-              :value="styleNumberInputValue('paddingTop')"
-              placeholder="未設定"
-              @change="applyNumberStyleFromInput('paddingTop', $event)"
-            />
-          </label>
-          <label>
-            <span>右</span>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              step="1"
-              :value="styleNumberInputValue('paddingRight')"
-              placeholder="未設定"
-              @change="applyNumberStyleFromInput('paddingRight', $event)"
-            />
-          </label>
-          <label>
-            <span>下</span>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              step="1"
-              :value="styleNumberInputValue('paddingBottom')"
-              placeholder="未設定"
-              @change="applyNumberStyleFromInput('paddingBottom', $event)"
-            />
-          </label>
-          <label>
-            <span>左</span>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              step="1"
-              :value="styleNumberInputValue('paddingLeft')"
-              placeholder="未設定"
-              @change="applyNumberStyleFromInput('paddingLeft', $event)"
-            />
-          </label>
-        </div>
-      </div>
-
-      <label class="view-style-control">
-        <span>角丸</span>
-        <input
-          type="number"
-          min="0"
-          max="40"
-          step="1"
-          :value="styleNumberInputValue('borderRadius')"
-          placeholder="未設定"
-          @change="applyNumberStyleFromInput('borderRadius', $event)"
-        />
-      </label>
-
-      <div class="view-style-control">
-        <span>文字方向</span>
-        <v-btn-toggle
-          :model-value="styleInspectorValues.textDirection"
-          mandatory
-          divided
-          color="primary"
-          variant="tonal"
-          rounded="lg"
-          density="comfortable"
-          class="view-style-segment d-flex ga-1 pa-1"
-          @update:model-value="applySelectedStyle('textDirection', $event)"
-        >
-          <v-btn value="horizontal">横</v-btn>
-          <v-btn value="vertical">縦</v-btn>
-        </v-btn-toggle>
-      </div>
-
-      <div class="view-style-control">
-        <span>文字揃え</span>
-        <v-btn-toggle
-          :model-value="styleInspectorValues.textAlign"
-          mandatory
-          divided
-          color="primary"
-          variant="tonal"
-          rounded="lg"
-          density="comfortable"
-          class="view-style-segment d-flex ga-1 pa-1"
-          @update:model-value="applySelectedStyle('textAlign', $event)"
-        >
-          <v-btn value="left">左</v-btn>
-          <v-btn value="center">中央</v-btn>
-          <v-btn value="right">右</v-btn>
-        </v-btn-toggle>
-      </div>
-
-      <v-checkbox
-        class="view-style-check"
-        color="primary"
-        density="compact"
-        hide-details
-        :model-value="styleBooleanInputValue('fontWeight')"
-        label="太字"
-        @update:model-value="applyFontWeightFromCheckbox"
-      />
-
-      <v-checkbox
-        class="view-style-check"
-        color="primary"
-        density="compact"
-        hide-details
-        :model-value="styleBooleanInputValue('showLabel')"
-        label="カラム名を表示"
-        @update:model-value="applyShowLabelFromCheckbox"
-      />
-
-      <div v-if="!isTemplateMode" class="view-style-action-group">
-        <button
-          type="button"
-          class="view-style-reset-button"
-          :disabled="!selectedCardHasOverride"
-          @click="resetSelectedCardOverride"
-        >
-          このカードだけ元に戻す
-        </button>
-        <button
-          type="button"
-          class="view-style-reset-button"
-          :disabled="!hasRecordOverrides"
-          @click="resetRecordOverrides"
-        >
-          個別差分をすべて解除
-        </button>
-      </div>
-
-      <button
-        type="button"
-        class="view-style-reset-button"
-        @click="resetSelectedStyle"
+      <v-expansion-panels
+        v-model="openStyleSections"
+        multiple
+        variant="accordion"
+        flat
+        class="view-style-panels inline-panel"
       >
-        スタイルをリセット
-      </button>
+        <v-expansion-panel :value="0" rounded="0" elevation="0">
+          <v-expansion-panel-title class="view-style-panel-title">
+            <div class="expansion-title">
+              <strong>レイアウト</strong>
+              <small>{{ autoHeightModeSummary }}</small>
+            </div>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text class="view-style-panel-body">
+            <div class="view-style-panel-stack">
+              <v-switch
+                color="primary"
+                density="compact"
+                hide-details
+                :model-value="autoHeightEnabledValue"
+                label="高さ自動拡張"
+                @update:model-value="applyAutoHeightEnabledFromCheckbox"
+              />
+
+              <div class="view-style-section-heading">
+                <strong>固定高さで使う設定</strong>
+                <span>{{ autoHeightSettingHint }}</span>
+              </div>
+
+              <div class="view-style-two-column view-style-two-column-layout">
+                <v-checkbox
+                  class="view-style-check view-style-control view-style-cell-full"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  :disabled="autoHeightSettingsDisabled"
+                  :model-value="pushDownSiblingsValue"
+                  label="下方向へ押し出し"
+                  @update:model-value="applyPushDownSiblingsFromCheckbox"
+                />
+
+                <label class="view-style-control">
+                  <span>最大高さ</span>
+                  <input
+                    type="number"
+                    min="64"
+                    step="1"
+                    :disabled="autoHeightSettingsDisabled"
+                    :value="maxAutoHeightInputValue"
+                    placeholder="上限なし"
+                    @change="applyMaxAutoHeightFromInput"
+                  />
+                </label>
+
+                <div class="view-style-control">
+                  <span>最大高さ超過時</span>
+                  <v-btn-toggle
+                    :disabled="autoHeightSettingsDisabled"
+                    :model-value="maxAutoHeightBehaviorValue"
+                    divided
+                    mandatory
+                    color="primary"
+                    variant="tonal"
+                    rounded="lg"
+                    density="comfortable"
+                    class="view-style-behavior-toggle"
+                    @update:model-value="applyMaxAutoHeightBehavior"
+                  >
+                    <v-tooltip
+                      v-for="option in heightBehaviorOptions"
+                      :key="option.value"
+                      :text="option.tooltip"
+                      location="bottom"
+                    >
+                      <template #activator="{ props: tooltipProps }">
+                        <v-btn
+                          v-bind="tooltipProps"
+                          :value="option.value"
+                          class="view-style-behavior-button"
+                        >
+                          <v-icon :icon="option.icon" size="16" />
+                          <span>{{ option.label }}</span>
+                        </v-btn>
+                      </template>
+                    </v-tooltip>
+                  </v-btn-toggle>
+                </div>
+              </div>
+
+              <div class="view-style-control view-padding-control">
+                <span>余白</span>
+                <div class="view-padding-grid">
+                  <label>
+                    <span>上</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      step="1"
+                      :value="styleNumberInputValue('paddingTop')"
+                      placeholder="未設定"
+                      @change="applyNumberStyleFromInput('paddingTop', $event)"
+                    />
+                  </label>
+                  <label>
+                    <span>右</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      step="1"
+                      :value="styleNumberInputValue('paddingRight')"
+                      placeholder="未設定"
+                      @change="
+                        applyNumberStyleFromInput('paddingRight', $event)
+                      "
+                    />
+                  </label>
+                  <label>
+                    <span>下</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      step="1"
+                      :value="styleNumberInputValue('paddingBottom')"
+                      placeholder="未設定"
+                      @change="
+                        applyNumberStyleFromInput('paddingBottom', $event)
+                      "
+                    />
+                  </label>
+                  <label>
+                    <span>左</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      step="1"
+                      :value="styleNumberInputValue('paddingLeft')"
+                      placeholder="未設定"
+                      @change="applyNumberStyleFromInput('paddingLeft', $event)"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <label class="view-style-control">
+                <span>角丸</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="40"
+                  step="1"
+                  :value="styleNumberInputValue('borderRadius')"
+                  placeholder="未設定"
+                  @change="applyNumberStyleFromInput('borderRadius', $event)"
+                />
+              </label>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+
+        <v-expansion-panel :value="1" rounded="0" elevation="0">
+          <v-expansion-panel-title class="view-style-panel-title">
+            <div class="expansion-title">
+              <strong>文字</strong>
+              <small>色、サイズ、方向、揃え</small>
+            </div>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text class="view-style-panel-body">
+            <div class="view-style-panel-stack">
+              <div class="view-style-two-column">
+                <label class="view-style-control">
+                  <span>文字色</span>
+                  <input
+                    type="color"
+                    :value="
+                      styleInputValue('textColor') ||
+                      themeColorInputValue('--v-theme-on-surface')
+                    "
+                    @input="applyStyleFromInput('textColor', $event)"
+                  />
+                </label>
+
+                <label class="view-style-control">
+                  <span>文字サイズ</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="48"
+                    step="1"
+                    :value="styleNumberInputValue('fontSize')"
+                    placeholder="未設定"
+                    @change="applyNumberStyleFromInput('fontSize', $event)"
+                  />
+                </label>
+              </div>
+
+              <v-checkbox
+                class="view-style-check"
+                color="primary"
+                density="compact"
+                hide-details
+                :model-value="styleBooleanInputValue('fontWeight')"
+                label="太字"
+                @update:model-value="applyFontWeightFromCheckbox"
+              />
+
+              <div class="view-style-control">
+                <span>文字方向</span>
+                <v-btn-toggle
+                  :model-value="styleInspectorValues.textDirection"
+                  mandatory
+                  divided
+                  color="primary"
+                  variant="tonal"
+                  rounded="lg"
+                  density="comfortable"
+                  class="view-style-segment"
+                  @update:model-value="
+                    applySelectedStyle('textDirection', $event)
+                  "
+                >
+                  <v-btn value="horizontal">横</v-btn>
+                  <v-btn value="vertical">縦</v-btn>
+                </v-btn-toggle>
+              </div>
+
+              <div class="view-style-control">
+                <span>文字揃え</span>
+                <v-btn-toggle
+                  :model-value="styleInspectorValues.textAlign"
+                  mandatory
+                  divided
+                  color="primary"
+                  variant="tonal"
+                  rounded="lg"
+                  density="comfortable"
+                  class="view-style-segment"
+                  @update:model-value="applySelectedStyle('textAlign', $event)"
+                >
+                  <v-btn value="left">左</v-btn>
+                  <v-btn value="center">中央</v-btn>
+                  <v-btn value="right">右</v-btn>
+                </v-btn-toggle>
+              </div>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+
+        <v-expansion-panel :value="2" rounded="0" elevation="0">
+          <v-expansion-panel-title class="view-style-panel-title">
+            <div class="expansion-title">
+              <strong>表示 / 操作</strong>
+              <small>背景、ラベル、リセット</small>
+            </div>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text class="view-style-panel-body">
+            <div class="view-style-panel-stack">
+              <div class="view-style-two-column">
+                <label class="view-style-control view-background-control">
+                  <span>背景色</span>
+                  <div class="view-background-row">
+                    <input
+                      type="color"
+                      :class="{ muted: isTransparentBackgroundSelected() }"
+                      :disabled="backgroundColorDisabled"
+                      :value="backgroundColorInputValue()"
+                      @input="applyStyleFromInput('backgroundColor', $event)"
+                    />
+                    <button
+                      type="button"
+                      class="view-background-transparent-button"
+                      :class="{ active: isTransparentBackgroundSelected() }"
+                      :disabled="backgroundColorDisabled"
+                      @click="applyBackgroundColorMode('transparent')"
+                    >
+                      透明
+                    </button>
+                  </div>
+                  <small v-if="backgroundColorDisabled" class="view-empty-hint">
+                    {{ backgroundColorDisabledReason }}
+                  </small>
+                </label>
+
+                <v-checkbox
+                  class="view-style-check view-style-control"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  :model-value="styleBooleanInputValue('showLabel')"
+                  label="カラム名を表示"
+                  @update:model-value="applyShowLabelFromCheckbox"
+                />
+              </div>
+
+              <div v-if="!isTemplateMode" class="view-style-action-group">
+                <button
+                  type="button"
+                  class="view-style-reset-button"
+                  :disabled="!selectedCardHasOverride"
+                  @click="resetSelectedCardOverride"
+                >
+                  このカードだけ元に戻す
+                </button>
+                <button
+                  type="button"
+                  class="view-style-reset-button"
+                  :disabled="!hasRecordOverrides"
+                  @click="resetRecordOverrides"
+                >
+                  個別差分をすべて解除
+                </button>
+              </div>
+
+              <button
+                type="button"
+                class="view-style-reset-button"
+                @click="resetSelectedStyle"
+              >
+                スタイルをリセット
+              </button>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
     </div>
 
     <v-menu
