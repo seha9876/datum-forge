@@ -1,4 +1,5 @@
 export type ViewLayoutAutoHeightBehavior = "scaleToFit" | "scroll" | "truncate";
+export type ViewLayoutSlotDisplayFormat = "plain";
 
 export interface ViewLayoutCardItem {
   tableId: number;
@@ -41,6 +42,11 @@ export interface ViewLayoutCardColumnBinding {
 export interface ViewLayoutTemplateCardSlot {
   slotId: number;
   sortOrder: number;
+  displayFormat?: ViewLayoutSlotDisplayFormat | null;
+  fontSize?: number | null;
+  textColor?: string | null;
+  fontWeight?: "normal" | "bold" | null;
+  textAlign?: "left" | "center" | "right" | null;
 }
 
 export interface ViewLayoutTemplate {

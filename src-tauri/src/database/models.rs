@@ -784,6 +784,11 @@ pub struct SaveViewLayoutTemplateCardsPayload {
 pub struct ViewLayoutTemplateCardSlot {
     pub slot_id: i64,
     pub sort_order: i64,
+    pub display_format: Option<String>,
+    pub font_size: Option<f64>,
+    pub text_color: Option<String>,
+    pub font_weight: Option<String>,
+    pub text_align: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

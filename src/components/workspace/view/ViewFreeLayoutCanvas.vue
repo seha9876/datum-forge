@@ -49,8 +49,10 @@ import type {
   ViewLayoutAutoHeightBehavior,
   ViewLayoutCardItem,
   ViewLayoutCardColumnBinding,
+  ViewLayoutSlotDisplayFormat,
   ViewLayoutTemplate,
   ViewLayoutTemplateCard,
+  ViewLayoutTemplateCardSlot,
   ViewSelection,
   ViewTableSection
 } from "../../../types";
@@ -76,6 +78,15 @@ type RenderedViewLayoutCardItem = ViewLayoutCardItem & {
   renderContentScale: number;
   renderContentViewportHeight: number | null;
   renderNaturalHeight: number | null;
+};
+
+type SlotFontWeightValue = "inherit" | "normal" | "bold";
+type SlotTextAlignValue = "inherit" | "left" | "center" | "right";
+type FieldEntry = {
+  key: string;
+  label: string;
+  slot: ViewLayoutTemplateCardSlot | null;
+  value: string;
 };
 const props = withDefaults(
   defineProps<{
@@ -403,9 +414,111 @@ const selectedTemplateSlotItem = computed(() => {
     ) ?? null
   );
 });
+const selectedTemplateSlot = computed<ViewLayoutTemplateCardSlot | null>(() => {
+  const key = selectedTemplateSlotKey.value;
+  const layout = templateSlotTargetLayout.value;
+  if (!key || !layout || layout.cardId !== key.cardId) {
+    return null;
+  }
+
+  return sortedSlots(layout).find((slot) => slot.slotId === key.slotId) ?? null;
+});
 const templateSlotTargetCardLabel = computed(() => {
   const layout = templateSlotTargetLayout.value;
   return layout ? cardBindingLabel(layout, 0) : "";
+});
+const selectedTemplateSlotDisplayFormat =
+  computed<ViewLayoutSlotDisplayFormat | null>(() =>
+    slotDisplayFormatValue(selectedTemplateSlot.value)
+  );
+const selectedTemplateSlotFontSizeInherited = computed(
+  () => typeof selectedTemplateSlot.value?.fontSize !== "number"
+);
+const selectedTemplateSlotFontSize = computed<number | "">(() =>
+  typeof selectedTemplateSlot.value?.fontSize === "number"
+    ? selectedTemplateSlot.value.fontSize
+    : ""
+);
+const selectedTemplateSlotFontSizePlaceholder = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return "継承";
+  }
+  return `継承 (${layoutStyleValue(layout, "fontSize")}px)`;
+});
+const selectedTemplateSlotTextColor = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return themeColorInputValue("--v-theme-on-surface");
+  }
+
+  const value = resolvedSlotTextColor(layout, selectedTemplateSlot.value);
+  return typeof value === "string" && value
+    ? value
+    : themeColorInputValue("--v-theme-on-surface");
+});
+const selectedTemplateSlotTextColorInherited = computed(
+  () => !selectedTemplateSlot.value?.textColor
+);
+const selectedTemplateSlotFontWeight = computed<SlotFontWeightValue>(() => {
+  const value = slotFontWeightValue(selectedTemplateSlot.value);
+  return value ?? "inherit";
+});
+const selectedTemplateSlotTextAlign = computed<SlotTextAlignValue>(() => {
+  const value = slotTextAlignValue(selectedTemplateSlot.value);
+  return value ?? "inherit";
+});
+const selectedTemplateSlotInheritedPreview = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return null;
+  }
+
+  const inheritedTextColor = layoutStyleValue(layout, "textColor");
+  const resolvedTextColor =
+    typeof inheritedTextColor === "string" && inheritedTextColor
+      ? inheritedTextColor
+      : themeColorInputValue("--v-theme-on-surface");
+  const inheritedFontWeight = layoutStyleValue(layout, "fontWeight");
+  const inheritedTextAlign = layoutStyleValue(layout, "textAlign");
+
+  return {
+    fontSizeLabel: `${layoutStyleValue(layout, "fontSize")}px`,
+    fontWeightLabel: inheritedFontWeight === "bold" ? "太字" : "標準",
+    textAlignLabel:
+      inheritedTextAlign === "center"
+        ? "中央"
+        : inheritedTextAlign === "right"
+          ? "右"
+          : "左",
+    textColorLabel:
+      typeof inheritedTextColor === "string" && inheritedTextColor
+        ? inheritedTextColor
+        : "既定色",
+    textColorValue: resolvedTextColor
+  };
+});
+const selectedTemplateSlotFontWeightResolvedLabel = computed(() => {
+  if (selectedTemplateSlotFontWeight.value === "inherit") {
+    return `継承中: ${
+      selectedTemplateSlotInheritedPreview.value?.fontWeightLabel ?? "標準"
+    }`;
+  }
+  return selectedTemplateSlotFontWeight.value === "bold"
+    ? "個別設定: 太字"
+    : "個別設定: 標準";
+});
+const selectedTemplateSlotTextAlignResolvedLabel = computed(() => {
+  if (selectedTemplateSlotTextAlign.value === "inherit") {
+    return `継承中: ${
+      selectedTemplateSlotInheritedPreview.value?.textAlignLabel ?? "左"
+    }`;
+  }
+  return selectedTemplateSlotTextAlign.value === "center"
+    ? "個別設定: 中央"
+    : selectedTemplateSlotTextAlign.value === "right"
+      ? "個別設定: 右"
+      : "個別設定: 左";
 });
 const bindingDraftValues = computed(() =>
   Object.values(bindingDraft.value)
@@ -534,6 +647,24 @@ function sortedSlots(layout: ViewLayoutCardItem | ViewLayoutTemplateCard) {
   );
 }
 
+function slotDisplayFormatValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): ViewLayoutSlotDisplayFormat | null {
+  return slot?.displayFormat ?? null;
+}
+
+function slotFontWeightValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): "normal" | "bold" | null {
+  return slot?.fontWeight ?? null;
+}
+
+function slotTextAlignValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): "left" | "center" | "right" | null {
+  return slot?.textAlign ?? null;
+}
+
 function layoutColumnIds(layout: ViewLayoutCardItem) {
   return normalizedBindingIds(
     [...layout.columns]
@@ -625,7 +756,7 @@ function fieldValueByColumnId(columnId: number) {
   return column ? fieldValue(column) : "";
 }
 
-function fieldEntriesByLayout(layout: ViewLayoutCardItem) {
+function fieldEntriesByLayout(layout: ViewLayoutCardItem): FieldEntry[] {
   const slotCount = sortedSlots(layout).length;
   const columnIds = resolvedColumnIds(layout);
 
@@ -635,15 +766,72 @@ function fieldEntriesByLayout(layout: ViewLayoutCardItem) {
       .map((columnId, index) => ({
         key: `${layout.cardId}:${columnId}:${index}`,
         label: fieldLabel(columnId),
+        slot: null,
         value: fieldValueByColumnId(columnId)
       }));
   }
 
-  return columnIds.map((columnId, index) => ({
-    key: `${layout.cardId}:slot:${index}`,
-    label: columnId === null ? `スロット ${index + 1}` : fieldLabel(columnId),
-    value: columnId === null ? "未設定" : fieldValueByColumnId(columnId)
-  }));
+  return sortedSlots(layout).map((slot, index) => {
+    const columnId = columnIds[index] ?? null;
+    return {
+      key: `${layout.cardId}:slot:${slot.slotId}`,
+      label: columnId === null ? `スロット ${index + 1}` : fieldLabel(columnId),
+      slot,
+      value: columnId === null ? "未設定" : fieldValueByColumnId(columnId)
+    };
+  });
+}
+
+function resolvedSlotFontSize(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slot?.fontSize ?? layoutStyleValue(layout, "fontSize");
+}
+
+function resolvedSlotTextColor(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slot?.textColor ?? layoutStyleValue(layout, "textColor");
+}
+
+function resolvedSlotFontWeight(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slotFontWeightValue(slot) ?? layoutStyleValue(layout, "fontWeight");
+}
+
+function resolvedSlotTextAlign(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slotTextAlignValue(slot) ?? layoutStyleValue(layout, "textAlign");
+}
+
+function fieldEntryValueStyle(
+  layout: ViewLayoutCardItem,
+  entry: FieldEntry
+): CSSProperties {
+  if (slotDisplayFormatValue(entry.slot) === "plain") {
+    // v1 keeps the default presentation; storing the value now allows future expansion.
+  }
+
+  const fontSize = resolvedSlotFontSize(layout, entry.slot);
+  const textColor = resolvedSlotTextColor(layout, entry.slot);
+  const fontWeight = resolvedSlotFontWeight(layout, entry.slot);
+  const textAlign = resolvedSlotTextAlign(layout, entry.slot);
+
+  return {
+    color: textColor ? String(textColor) : undefined,
+    fontSize: typeof fontSize === "number" ? `${fontSize}px` : undefined,
+    fontWeight: typeof fontWeight === "string" ? fontWeight : undefined,
+    textAlign:
+      typeof textAlign === "string"
+        ? (textAlign as CSSProperties["textAlign"])
+        : undefined
+  };
 }
 
 function cardBindingLabel(layout: ViewLayoutCardItem, index: number) {
@@ -807,8 +995,13 @@ function addTemplateSlot(cardId: number) {
       slots: [
         ...sortedSlots(layout),
         {
+          displayFormat: null,
+          fontSize: null,
+          fontWeight: null,
           slotId,
-          sortOrder: layout.slots.length
+          sortOrder: layout.slots.length,
+          textAlign: null,
+          textColor: null
         }
       ]
     },
@@ -911,6 +1104,91 @@ function isBindingSlotCountLocked(layout: ViewLayoutCardItem) {
 function selectTemplateSlot(cardId: number, slotId: number) {
   selectedTemplateSlotKey.value = { cardId, slotId };
   setSingleSelection(cardId);
+}
+
+function updateSelectedTemplateSlot(
+  updater: (slot: ViewLayoutTemplateCardSlot) => ViewLayoutTemplateCardSlot
+) {
+  const key = selectedTemplateSlotKey.value;
+  const layout = templateSlotTargetLayout.value;
+  if (!key || !layout || layout.cardId !== key.cardId) {
+    return;
+  }
+
+  const nextSlots = sortedSlots(layout).map((slot) =>
+    slot.slotId === key.slotId ? updater(slot) : slot
+  );
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots
+    },
+    true
+  );
+}
+
+function applySelectedTemplateSlotDisplayFormat(
+  value: ViewLayoutSlotDisplayFormat | null
+) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    displayFormat: value
+  }));
+}
+
+function applySelectedTemplateSlotFontSizeFromInput(event: unknown) {
+  const rawValue =
+    (event as { target?: { value?: string } }).target?.value ?? "";
+  if (!rawValue) {
+    updateSelectedTemplateSlot((slot) => ({
+      ...slot,
+      fontSize: null
+    }));
+    return;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    fontSize: value
+  }));
+}
+
+function applySelectedTemplateSlotTextColorFromInput(event: unknown) {
+  const value = (event as { target?: { value?: string } }).target?.value ?? "";
+  if (!value) {
+    return;
+  }
+
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textColor: value
+  }));
+}
+
+function resetSelectedTemplateSlotTextColor() {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textColor: null
+  }));
+}
+
+function applySelectedTemplateSlotFontWeight(value: SlotFontWeightValue) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    fontWeight: value === "inherit" ? null : value
+  }));
+}
+
+function applySelectedTemplateSlotTextAlign(value: SlotTextAlignValue) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textAlign: value === "inherit" ? null : value
+  }));
 }
 
 function saveBindingDraft() {
@@ -1902,8 +2180,13 @@ function layoutToTemplateCard(
   return {
     cardId: layout.cardId,
     slots: sortedSlots(layout).map((slot, index) => ({
+      displayFormat: slot.displayFormat ?? null,
+      fontSize: slot.fontSize ?? null,
+      fontWeight: slot.fontWeight ?? null,
       slotId: slot.slotId,
-      sortOrder: index
+      sortOrder: index,
+      textAlign: slot.textAlign ?? null,
+      textColor: slot.textColor ?? null
     })),
     presetId: normalizedPresetId(layout),
     label: null,
@@ -2120,7 +2403,10 @@ function layoutToTemplateCard(
                         >
                           <span>{{ entry.label }}</span>
                         </div>
-                        <p class="view-field-card-value">
+                        <p
+                          class="view-field-card-value"
+                          :style="fieldEntryValueStyle(layout, entry)"
+                        >
                           {{ entry.value }}
                         </p>
                       </div>
@@ -2254,6 +2540,21 @@ function layoutToTemplateCard(
           applyPushDownSiblingsFromCheckbox
         "
         :apply-selected-style="applySelectedStyle"
+        :apply-selected-template-slot-display-format="
+          applySelectedTemplateSlotDisplayFormat
+        "
+        :apply-selected-template-slot-font-size-from-input="
+          applySelectedTemplateSlotFontSizeFromInput
+        "
+        :apply-selected-template-slot-font-weight="
+          applySelectedTemplateSlotFontWeight
+        "
+        :apply-selected-template-slot-text-align="
+          applySelectedTemplateSlotTextAlign
+        "
+        :apply-selected-template-slot-text-color-from-input="
+          applySelectedTemplateSlotTextColorFromInput
+        "
         :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
         :apply-style-from-input="applyStyleFromInputWithPolicy"
         :auto-height-enabled-value="autoHeightEnabledInspectorValue"
@@ -2276,10 +2577,40 @@ function layoutToTemplateCard(
         :selected-layouts="selectedLayouts"
         :selected-preset-id="selectedPresetId"
         :selected-slot-item="selectedTemplateSlotItem"
+        :selected-template-slot-display-format-value="
+          selectedTemplateSlotDisplayFormat
+        "
+        :selected-template-slot-font-size-inherited="
+          selectedTemplateSlotFontSizeInherited
+        "
+        :selected-template-slot-font-size-placeholder="
+          selectedTemplateSlotFontSizePlaceholder
+        "
+        :selected-template-slot-font-size-value="selectedTemplateSlotFontSize"
+        :selected-template-slot-inherited-preview="
+          selectedTemplateSlotInheritedPreview
+        "
+        :selected-template-slot-font-weight-value="
+          selectedTemplateSlotFontWeight
+        "
+        :selected-template-slot-font-weight-resolved-label="
+          selectedTemplateSlotFontWeightResolvedLabel
+        "
         :selected-template-slot-key="
           selectedTemplateSlotKey
             ? `${selectedTemplateSlotKey.cardId}:${selectedTemplateSlotKey.slotId}`
             : null
+        "
+        :selected-template-slot-text-align-value="selectedTemplateSlotTextAlign"
+        :selected-template-slot-text-align-resolved-label="
+          selectedTemplateSlotTextAlignResolvedLabel
+        "
+        :selected-template-slot-text-color-inherited="
+          selectedTemplateSlotTextColorInherited
+        "
+        :selected-template-slot-text-color-value="selectedTemplateSlotTextColor"
+        :reset-selected-template-slot-text-color="
+          resetSelectedTemplateSlotTextColor
         "
         :select-template-slot="selectTemplateSlot"
         :style-boolean-input-value="styleBooleanInputValue"

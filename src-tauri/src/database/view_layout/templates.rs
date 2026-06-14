@@ -188,8 +188,13 @@ impl Db {
             self.conn.execute(
                 "
                 INSERT INTO view_layout_template_card_slots
-                  (template_id, card_id, sort_order, updated_at)
-                SELECT ?, ?, sort_order, CURRENT_TIMESTAMP
+                  (
+                    template_id, card_id, sort_order, display_format, font_size,
+                    text_color, font_weight, text_align, updated_at
+                  )
+                SELECT
+                  ?, ?, sort_order, display_format, font_size,
+                  text_color, font_weight, text_align, CURRENT_TIMESTAMP
                 FROM view_layout_template_card_slots
                 WHERE template_id = ? AND card_id = ?
                 ORDER BY sort_order, slot_id

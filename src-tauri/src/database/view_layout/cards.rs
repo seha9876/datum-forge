@@ -86,7 +86,15 @@ impl Db {
     ) -> Result<Vec<(i64, ViewLayoutTemplateCardSlot)>, DbError> {
         let mut stmt = self.conn.prepare(
             "
-            SELECT card_id, slot_id, sort_order
+            SELECT
+              card_id,
+              slot_id,
+              sort_order,
+              display_format,
+              font_size,
+              text_color,
+              font_weight,
+              text_align
             FROM view_layout_template_card_slots
             WHERE template_id = ?
             ORDER BY card_id, sort_order, slot_id
@@ -98,6 +106,11 @@ impl Db {
                 ViewLayoutTemplateCardSlot {
                     slot_id: row.get(1)?,
                     sort_order: row.get(2)?,
+                    display_format: row.get(3)?,
+                    font_size: row.get(4)?,
+                    text_color: row.get(5)?,
+                    font_weight: row.get(6)?,
+                    text_align: row.get(7)?,
                 },
             ))
         })?;
@@ -317,14 +330,26 @@ impl Db {
             params![template_id, card_id],
         )?;
 
-        for (index, _) in slots.iter().enumerate() {
+        for (index, slot) in slots.iter().enumerate() {
             self.conn.execute(
                 "
                 INSERT INTO view_layout_template_card_slots
-                  (template_id, card_id, sort_order, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                  (
+                    template_id, card_id, sort_order, display_format, font_size,
+                    text_color, font_weight, text_align, updated_at
+                  )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ",
-                params![template_id, card_id, index as i64],
+                params![
+                    template_id,
+                    card_id,
+                    index as i64,
+                    slot.display_format,
+                    slot.font_size,
+                    slot.text_color,
+                    slot.font_weight,
+                    slot.text_align
+                ],
             )?;
         }
 

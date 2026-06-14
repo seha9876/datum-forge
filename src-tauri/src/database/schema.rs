@@ -204,6 +204,11 @@ impl Db {
               template_id INTEGER NOT NULL,
               card_id INTEGER NOT NULL,
               sort_order INTEGER NOT NULL DEFAULT 0,
+              display_format TEXT,
+              font_size REAL,
+              text_color TEXT,
+              font_weight TEXT,
+              text_align TEXT,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(template_id) REFERENCES view_layout_templates(id),
               FOREIGN KEY(card_id) REFERENCES view_layout_template_cards(card_id)
@@ -257,6 +262,7 @@ impl Db {
         self.migrate_record_tag_group_links()?;
         self.migrate_view_layout_template_card_preset_id()?;
         self.migrate_view_layout_template_card_auto_height_settings()?;
+        self.migrate_view_layout_template_card_slot_settings()?;
         Ok(())
     }
 
@@ -323,9 +329,52 @@ impl Db {
         Ok(())
     }
 
+    fn migrate_view_layout_template_card_slot_settings(&self) -> Result<(), DbError> {
+        let column_names = self.view_layout_template_card_slot_column_names()?;
+        let pending_columns = [
+            (
+                "display_format",
+                "ALTER TABLE view_layout_template_card_slots ADD COLUMN display_format TEXT",
+            ),
+            (
+                "font_size",
+                "ALTER TABLE view_layout_template_card_slots ADD COLUMN font_size REAL",
+            ),
+            (
+                "text_color",
+                "ALTER TABLE view_layout_template_card_slots ADD COLUMN text_color TEXT",
+            ),
+            (
+                "font_weight",
+                "ALTER TABLE view_layout_template_card_slots ADD COLUMN font_weight TEXT",
+            ),
+            (
+                "text_align",
+                "ALTER TABLE view_layout_template_card_slots ADD COLUMN text_align TEXT",
+            ),
+        ];
+
+        for (column_name, statement) in pending_columns {
+            if column_names.iter().any(|existing| existing == column_name) {
+                continue;
+            }
+            self.conn.execute(statement, [])?;
+        }
+
+        Ok(())
+    }
+
     fn view_layout_template_card_column_names(&self) -> Result<Vec<String>, DbError> {
         self.conn
             .prepare("PRAGMA table_info(view_layout_template_cards)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(DbError::from)
+    }
+
+    fn view_layout_template_card_slot_column_names(&self) -> Result<Vec<String>, DbError> {
+        self.conn
+            .prepare("PRAGMA table_info(view_layout_template_card_slots)")?
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(DbError::from)
