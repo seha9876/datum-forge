@@ -131,19 +131,19 @@ const heightBehaviorOptions: Array<{
   value: ViewLayoutAutoHeightBehavior;
 }> = [
   {
-    icon: "mdi-arrow-collapse-vertical",
+    icon: "mdi-fit-to-page-outline",
     label: "縮小して収める",
     tooltip: "最大高さを超えたら文字を縮小して全体を表示",
     value: "scaleToFit"
   },
   {
-    icon: "mdi-scroll",
+    icon: "mdi-arrow-up-down",
     label: "内部スクロール",
     tooltip: "最大高さを超えたらカード内をスクロールして表示",
     value: "scroll"
   },
   {
-    icon: "mdi-format-vertical-align-bottom",
+    icon: "mdi-dots-horizontal",
     label: "末尾を省略",
     tooltip: "最大高さを超えたら末尾を省略して表示",
     value: "truncate"
@@ -179,6 +179,12 @@ const autoHeightSettingHint = computed(() =>
     ? "固定高さ向けの設定は無効です。"
     : "高さ自動拡張が OFF のときに使う設定です。"
 );
+const selectedHeightBehaviorLabel = computed(() => {
+  const option = heightBehaviorOptions.find(
+    (candidate) => candidate.value === props.maxAutoHeightBehaviorValue
+  );
+  return option?.label ?? "未選択";
+});
 const cardStyleHeading = computed(() =>
   props.isTemplateMode && hasTemplateSlots.value ? "カード設定" : "スタイル"
 );
@@ -748,7 +754,9 @@ async function confirmRemoveSlotFromMenu() {
                   <span>{{ autoHeightSettingHint }}</span>
                 </div>
 
-                <div class="view-style-two-column view-style-two-column-layout">
+                <div
+                  class="view-style-two-column view-style-two-column-layout view-style-two-column-behavior"
+                >
                   <v-checkbox
                     class="view-style-check view-style-control view-style-cell-full"
                     color="primary"
@@ -760,7 +768,7 @@ async function confirmRemoveSlotFromMenu() {
                     @update:model-value="applyPushDownSiblingsFromCheckbox"
                   />
 
-                  <label class="view-style-control">
+                  <label class="view-style-control view-style-behavior-input">
                     <span>最大高さ</span>
                     <input
                       type="number"
@@ -773,7 +781,7 @@ async function confirmRemoveSlotFromMenu() {
                     />
                   </label>
 
-                  <div class="view-style-control">
+                  <div class="view-style-control view-style-behavior-cell">
                     <span>最大高さ超過時</span>
                     <v-btn-toggle
                       :disabled="autoHeightSettingsDisabled"
@@ -799,12 +807,12 @@ async function confirmRemoveSlotFromMenu() {
                             :value="option.value"
                             class="view-style-behavior-button"
                           >
-                            <v-icon :icon="option.icon" size="16" />
-                            <span>{{ option.label }}</span>
+                            <v-icon :icon="option.icon" size="18" />
                           </v-btn>
                         </template>
                       </v-tooltip>
                     </v-btn-toggle>
+                    <small>選択中: {{ selectedHeightBehaviorLabel }}</small>
                   </div>
                 </div>
 

@@ -814,8 +814,17 @@
   align-items: start;
 }
 
+.view-style-two-column-behavior {
+  grid-template-columns: minmax(7.5rem, 0.9fr) minmax(0, 1.6fr);
+}
+
 .view-style-cell-full {
   grid-column: 1 / -1;
+}
+
+.view-style-behavior-input,
+.view-style-behavior-cell {
+  min-width: 0;
 }
 
 .view-padding-grid {
@@ -846,30 +855,38 @@
 .view-style-behavior-toggle {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 0.35rem;
   width: 100%;
-  padding: 0.25rem;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0.1rem;
 }
 
+.view-style-behavior-toggle .v-btn-toggle__content,
 .view-style-behavior-toggle .v-btn {
+  height: 100%;
   min-width: 0;
 }
 
 .view-style-behavior-button {
   display: grid;
-  gap: 0.2rem;
+  align-self: stretch;
+  height: 100%;
   justify-items: center;
-  min-height: 60px;
-  padding-inline: 0.4rem !important;
+  align-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding-inline: 0.3rem !important;
   text-align: center;
-  white-space: normal;
-  line-height: 1.2;
 }
 
 .view-style-behavior-button .v-btn__content {
   display: grid;
-  gap: 0.2rem;
+  align-content: center;
   justify-items: center;
+  min-height: 0;
+  min-width: 0;
 }
 
 .view-style-check {
