@@ -1,7 +1,12 @@
+export type ViewLayoutAutoHeightBehavior = "scaleToFit" | "scroll" | "truncate";
+export type ViewLayoutSlotDisplayFormat = "plain";
+
 export interface ViewLayoutCardItem {
   tableId: number;
   cardId: number;
-  columnId: number | null;
+  columns: ViewLayoutCardColumnBinding[];
+  slots: ViewLayoutTemplateCardSlot[];
+  presetId?: string | null;
   label?: string | null;
   x: number;
   y: number;
@@ -21,12 +26,27 @@ export interface ViewLayoutCardItem {
   paddingLeft?: number | null;
   borderRadius?: number | null;
   showLabel?: boolean | null;
+  autoHeightEnabled: boolean;
+  pushDownSiblings: boolean;
+  maxAutoHeight?: number | null;
+  maxAutoHeightBehavior: ViewLayoutAutoHeightBehavior;
   hasOverride: boolean;
 }
 
 export interface ViewLayoutCardColumnBinding {
   cardId: number;
   columnId: number;
+  sortOrder: number;
+}
+
+export interface ViewLayoutTemplateCardSlot {
+  slotId: number;
+  sortOrder: number;
+  displayFormat?: ViewLayoutSlotDisplayFormat | null;
+  fontSize?: number | null;
+  textColor?: string | null;
+  fontWeight?: "normal" | "bold" | null;
+  textAlign?: "left" | "center" | "right" | null;
 }
 
 export interface ViewLayoutTemplate {
@@ -40,6 +60,8 @@ export interface ViewLayoutTemplate {
 
 export interface ViewLayoutTemplateCard {
   cardId: number;
+  slots: ViewLayoutTemplateCardSlot[];
+  presetId?: string | null;
   x: number;
   y: number;
   width: number;
@@ -59,6 +81,10 @@ export interface ViewLayoutTemplateCard {
   paddingLeft?: number | null;
   borderRadius?: number | null;
   showLabel?: boolean | null;
+  autoHeightEnabled: boolean;
+  pushDownSiblings: boolean;
+  maxAutoHeight?: number | null;
+  maxAutoHeightBehavior: ViewLayoutAutoHeightBehavior;
 }
 
 export interface ResolvedViewFieldLayout {
@@ -79,7 +105,7 @@ export interface SaveViewLayoutCardOverridesPayload {
   recordId: number;
   items: Array<{
     cardId: number;
-    columnId: number | null;
+    presetId?: string | null;
     x: number;
     y: number;
     width: number;

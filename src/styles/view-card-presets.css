@@ -1,0 +1,81 @@
+.view-field-card[data-card-preset="builtin/chalkboard"] {
+  --card-border-color: rgba(210, 228, 219, 0.22);
+  --card-background:
+    radial-gradient(
+      circle at 18% 18%,
+      rgba(159, 201, 178, 0.12),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 82% 22%,
+      rgba(122, 164, 140, 0.1),
+      transparent 28%
+    ),
+    linear-gradient(145deg, rgba(18, 48, 39, 0.98), rgba(9, 27, 22, 0.98));
+  --card-box-shadow:
+    inset 0 1px 0 rgba(236, 245, 238, 0.08),
+    inset 0 0 0 1px rgba(223, 237, 228, 0.06), 0 12px 26px rgba(0, 0, 0, 0.24);
+  --card-text-color: #edf4ee;
+  --card-header-color: #f5fbf6;
+  --card-value-shadow: 0 0 0.5px rgba(255, 255, 255, 0.36);
+}
+
+.view-field-card[data-card-preset="builtin/chalkboard"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.05),
+      transparent 18%,
+      transparent 82%,
+      rgba(255, 255, 255, 0.03)
+    ),
+    radial-gradient(
+      circle at 20% 30%,
+      rgba(255, 255, 255, 0.04),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 70% 70%,
+      rgba(255, 255, 255, 0.035),
+      transparent 28%
+    );
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+.view-field-card[data-card-preset="builtin/chalkboard"]::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgba(233, 244, 236, 0.07);
+  border-radius: calc(max(0px, var(--card-border-radius, 14px) - 6px));
+  pointer-events: none;
+}
+
+.view-field-card[data-card-preset="builtin/chalkboard"]
+  .view-field-card-header
+  span {
+  color: var(--card-header-color);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 0.6px rgba(255, 255, 255, 0.44);
+}
+
+.view-field-card[data-card-preset="builtin/chalkboard"] .view-field-card-value {
+  color: var(--card-text-color);
+  text-shadow: var(--card-value-shadow);
+}
+
+.view-field-card[data-card-preset="builtin/chalkboard"].selected {
+  --card-selection-border-color: rgba(var(--v-theme-primary), 0.82);
+  --card-selection-ring:
+    0 0 0 3px rgba(var(--v-theme-primary), 0.2),
+    0 0 0 6px rgba(var(--v-theme-primary), 0.08);
+  --card-box-shadow-selected:
+    inset 0 1px 0 rgba(236, 245, 238, 0.12),
+    inset 0 0 0 1px rgba(223, 237, 228, 0.08), 0 18px 34px rgba(0, 0, 0, 0.28);
+}

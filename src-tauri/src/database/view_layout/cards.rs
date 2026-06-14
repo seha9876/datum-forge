@@ -5,16 +5,19 @@
 use super::*;
 use crate::database::validation::bool_to_i64;
 use rusqlite::{params, OptionalExtension};
+use std::collections::HashMap;
 
 impl Db {
     pub(super) fn list_view_layout_template_cards(
         &self,
         template_id: i64,
     ) -> Result<Vec<ViewLayoutTemplateCard>, DbError> {
+        let slots_by_card = self.list_view_layout_template_card_slots_by_card(template_id)?;
         let mut stmt = self.conn.prepare(
             "
             SELECT
               card.card_id,
+              card.preset_id,
               card.x,
               card.y,
               card.width,
@@ -33,37 +36,96 @@ impl Db {
               card.padding_bottom,
               card.padding_left,
               card.border_radius,
-              card.show_label
+              card.show_label,
+              card.auto_height_enabled,
+              card.push_down_siblings,
+              card.max_auto_height,
+              card.max_auto_height_behavior
             FROM view_layout_template_cards card
             WHERE card.template_id = ?
             ORDER BY card.sort_order, card.card_id
             ",
         )?;
         let rows = stmt.query_map([template_id], |row| {
+            let card_id = row.get(0)?;
             Ok(ViewLayoutTemplateCard {
-                card_id: row.get(0)?,
-                x: row.get(1)?,
-                y: row.get(2)?,
-                width: row.get(3)?,
-                height: row.get(4)?,
-                visible: row.get::<_, i64>(5)? != 0,
-                label: row.get(6)?,
-                background_color: row.get(7)?,
-                text_color: row.get(8)?,
-                font_size: row.get(9)?,
-                text_direction: row.get(10)?,
-                font_weight: row.get(11)?,
-                text_align: row.get(12)?,
-                padding: row.get(13)?,
-                padding_top: row.get(14)?,
-                padding_right: row.get(15)?,
-                padding_bottom: row.get(16)?,
-                padding_left: row.get(17)?,
-                border_radius: row.get(18)?,
-                show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                card_id,
+                slots: slots_by_card.get(&card_id).cloned().unwrap_or_default(),
+                preset_id: row.get(1)?,
+                x: row.get(2)?,
+                y: row.get(3)?,
+                width: row.get(4)?,
+                height: row.get(5)?,
+                visible: row.get::<_, i64>(6)? != 0,
+                label: row.get(7)?,
+                background_color: row.get(8)?,
+                text_color: row.get(9)?,
+                font_size: row.get(10)?,
+                text_direction: row.get(11)?,
+                font_weight: row.get(12)?,
+                text_align: row.get(13)?,
+                padding: row.get(14)?,
+                padding_top: row.get(15)?,
+                padding_right: row.get(16)?,
+                padding_bottom: row.get(17)?,
+                padding_left: row.get(18)?,
+                border_radius: row.get(19)?,
+                show_label: row.get::<_, Option<i64>>(20)?.map(|value| value != 0),
+                auto_height_enabled: row.get::<_, i64>(21)? != 0,
+                push_down_siblings: row.get::<_, i64>(22)? != 0,
+                max_auto_height: row.get(23)?,
+                max_auto_height_behavior: row.get(24)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+    }
+
+    pub(super) fn list_view_layout_template_card_slots(
+        &self,
+        template_id: i64,
+    ) -> Result<Vec<(i64, ViewLayoutTemplateCardSlot)>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT
+              card_id,
+              slot_id,
+              sort_order,
+              display_format,
+              font_size,
+              text_color,
+              font_weight,
+              text_align
+            FROM view_layout_template_card_slots
+            WHERE template_id = ?
+            ORDER BY card_id, sort_order, slot_id
+            ",
+        )?;
+        let rows = stmt.query_map([template_id], |row| {
+            Ok((
+                row.get(0)?,
+                ViewLayoutTemplateCardSlot {
+                    slot_id: row.get(1)?,
+                    sort_order: row.get(2)?,
+                    display_format: row.get(3)?,
+                    font_size: row.get(4)?,
+                    text_color: row.get(5)?,
+                    font_weight: row.get(6)?,
+                    text_align: row.get(7)?,
+                },
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+    }
+
+    pub(super) fn list_view_layout_template_card_slots_by_card(
+        &self,
+        template_id: i64,
+    ) -> Result<HashMap<i64, Vec<ViewLayoutTemplateCardSlot>>, DbError> {
+        let mut slots_by_card = HashMap::<i64, Vec<ViewLayoutTemplateCardSlot>>::new();
+        for (card_id, slot) in self.list_view_layout_template_card_slots(template_id)? {
+            slots_by_card.entry(card_id).or_default().push(slot);
+        }
+        Ok(slots_by_card)
     }
 
     pub(super) fn list_view_layout_template_card_ids(
@@ -93,13 +155,16 @@ impl Db {
             self.conn.execute(
                 "
                 INSERT INTO view_layout_template_cards (
-                  card_id, template_id, x, y, width, height, visible,
+                  card_id, template_id, preset_id, x, y, width, height, visible,
                   background_color, text_color, font_size, text_direction,
                   font_weight, text_align, padding, padding_top, padding_right,
                   padding_bottom, padding_left, border_radius, show_label,
+                  auto_height_enabled, push_down_siblings, max_auto_height,
+                  max_auto_height_behavior,
                   sort_order, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(card_id) DO UPDATE SET
+                  preset_id = excluded.preset_id,
                   x = excluded.x,
                   y = excluded.y,
                   width = excluded.width,
@@ -118,12 +183,17 @@ impl Db {
                   padding_left = excluded.padding_left,
                   border_radius = excluded.border_radius,
                   show_label = excluded.show_label,
+                  auto_height_enabled = excluded.auto_height_enabled,
+                  push_down_siblings = excluded.push_down_siblings,
+                  max_auto_height = excluded.max_auto_height,
+                  max_auto_height_behavior = excluded.max_auto_height_behavior,
                   sort_order = excluded.sort_order,
                   updated_at = CURRENT_TIMESTAMP
                 ",
                 params![
                     card_id,
                     template_id,
+                    item.preset_id,
                     item.x.max(0.0),
                     item.y.max(0.0),
                     item.width.max(80.0),
@@ -142,6 +212,10 @@ impl Db {
                     item.padding_left,
                     item.border_radius,
                     item.show_label.map(bool_to_i64),
+                    bool_to_i64(item.auto_height_enabled),
+                    bool_to_i64(item.push_down_siblings),
+                    item.max_auto_height,
+                    item.max_auto_height_behavior,
                     sort_order
                 ],
             )?;
@@ -151,15 +225,18 @@ impl Db {
         self.conn.execute(
             "
             INSERT INTO view_layout_template_cards (
-              template_id, x, y, width, height, visible,
+              template_id, preset_id, x, y, width, height, visible,
               background_color, text_color, font_size, text_direction,
               font_weight, text_align, padding, padding_top, padding_right,
               padding_bottom, padding_left, border_radius, show_label,
+              auto_height_enabled, push_down_siblings, max_auto_height,
+              max_auto_height_behavior,
               sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ",
             params![
                 template_id,
+                item.preset_id,
                 item.x.max(0.0),
                 item.y.max(0.0),
                 item.width.max(80.0),
@@ -178,6 +255,10 @@ impl Db {
                 item.padding_left,
                 item.border_radius,
                 item.show_label.map(bool_to_i64),
+                bool_to_i64(item.auto_height_enabled),
+                bool_to_i64(item.push_down_siblings),
+                item.max_auto_height,
+                item.max_auto_height_behavior,
                 sort_order
             ],
         )?;
@@ -192,10 +273,12 @@ impl Db {
         self.conn
             .query_row(
                 "
-                SELECT card_id, x, y, width, height, visible,
+                SELECT card_id, preset_id, x, y, width, height, visible,
                        background_color, text_color, font_size, text_direction,
                        font_weight, text_align, padding, padding_top, padding_right,
-                       padding_bottom, padding_left, border_radius, show_label
+                       padding_bottom, padding_left, border_radius, show_label,
+                       auto_height_enabled, push_down_siblings, max_auto_height,
+                       max_auto_height_behavior
                 FROM view_layout_template_cards
                 WHERE template_id = ? AND card_id = ?
                 ",
@@ -203,28 +286,73 @@ impl Db {
                 |row| {
                     Ok(SaveViewLayoutCardItem {
                         card_id: row.get(0)?,
-                        x: row.get(1)?,
-                        y: row.get(2)?,
-                        width: row.get(3)?,
-                        height: row.get(4)?,
-                        visible: row.get::<_, i64>(5)? != 0,
-                        background_color: row.get(6)?,
-                        text_color: row.get(7)?,
-                        font_size: row.get(8)?,
-                        text_direction: row.get(9)?,
-                        font_weight: row.get(10)?,
-                        text_align: row.get(11)?,
-                        padding: row.get(12)?,
-                        padding_top: row.get(13)?,
-                        padding_right: row.get(14)?,
-                        padding_bottom: row.get(15)?,
-                        padding_left: row.get(16)?,
-                        border_radius: row.get(17)?,
-                        show_label: row.get::<_, Option<i64>>(18)?.map(|value| value != 0),
+                        preset_id: row.get(1)?,
+                        x: row.get(2)?,
+                        y: row.get(3)?,
+                        width: row.get(4)?,
+                        height: row.get(5)?,
+                        visible: row.get::<_, i64>(6)? != 0,
+                        background_color: row.get(7)?,
+                        text_color: row.get(8)?,
+                        font_size: row.get(9)?,
+                        text_direction: row.get(10)?,
+                        font_weight: row.get(11)?,
+                        text_align: row.get(12)?,
+                        padding: row.get(13)?,
+                        padding_top: row.get(14)?,
+                        padding_right: row.get(15)?,
+                        padding_bottom: row.get(16)?,
+                        padding_left: row.get(17)?,
+                        border_radius: row.get(18)?,
+                        show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                        auto_height_enabled: row.get::<_, i64>(20)? != 0,
+                        push_down_siblings: row.get::<_, i64>(21)? != 0,
+                        max_auto_height: row.get(22)?,
+                        max_auto_height_behavior: row.get(23)?,
                     })
                 },
             )
             .optional()
             .map_err(DbError::from)
+    }
+
+    pub(super) fn replace_view_layout_template_card_slots(
+        &self,
+        template_id: i64,
+        card_id: i64,
+        slots: &[ViewLayoutTemplateCardSlot],
+    ) -> Result<(), DbError> {
+        self.conn.execute(
+            "
+            DELETE FROM view_layout_template_card_slots
+            WHERE template_id = ? AND card_id = ?
+            ",
+            params![template_id, card_id],
+        )?;
+
+        for (index, slot) in slots.iter().enumerate() {
+            self.conn.execute(
+                "
+                INSERT INTO view_layout_template_card_slots
+                  (
+                    template_id, card_id, sort_order, display_format, font_size,
+                    text_color, font_weight, text_align, updated_at
+                  )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ",
+                params![
+                    template_id,
+                    card_id,
+                    index as i64,
+                    slot.display_format,
+                    slot.font_size,
+                    slot.text_color,
+                    slot.font_weight,
+                    slot.text_align
+                ],
+            )?;
+        }
+
+        Ok(())
     }
 }

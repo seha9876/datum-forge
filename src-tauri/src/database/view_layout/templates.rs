@@ -135,10 +135,12 @@ impl Db {
     ) -> Result<(), DbError> {
         let mut stmt = self.conn.prepare(
             "
-            SELECT card_id, x, y, width, height, visible,
+            SELECT card_id, preset_id, x, y, width, height, visible,
                    background_color, text_color, font_size, text_direction,
                    font_weight, text_align, padding, padding_top, padding_right,
-                   padding_bottom, padding_left, border_radius, show_label, sort_order
+                   padding_bottom, padding_left, border_radius, show_label,
+                   auto_height_enabled, push_down_siblings, max_auto_height,
+                   max_auto_height_behavior, sort_order
             FROM view_layout_template_cards
             WHERE template_id = ?
             ORDER BY sort_order, card_id
@@ -150,26 +152,31 @@ impl Db {
                     row.get::<_, i64>(0)?,
                     SaveViewLayoutCardItem {
                         card_id: 0,
-                        x: row.get(1)?,
-                        y: row.get(2)?,
-                        width: row.get(3)?,
-                        height: row.get(4)?,
-                        visible: row.get::<_, i64>(5)? != 0,
-                        background_color: row.get(6)?,
-                        text_color: row.get(7)?,
-                        font_size: row.get(8)?,
-                        text_direction: row.get(9)?,
-                        font_weight: row.get(10)?,
-                        text_align: row.get(11)?,
-                        padding: row.get(12)?,
-                        padding_top: row.get(13)?,
-                        padding_right: row.get(14)?,
-                        padding_bottom: row.get(15)?,
-                        padding_left: row.get(16)?,
-                        border_radius: row.get(17)?,
-                        show_label: row.get::<_, Option<i64>>(18)?.map(|value| value != 0),
+                        preset_id: row.get(1)?,
+                        x: row.get(2)?,
+                        y: row.get(3)?,
+                        width: row.get(4)?,
+                        height: row.get(5)?,
+                        visible: row.get::<_, i64>(6)? != 0,
+                        background_color: row.get(7)?,
+                        text_color: row.get(8)?,
+                        font_size: row.get(9)?,
+                        text_direction: row.get(10)?,
+                        font_weight: row.get(11)?,
+                        text_align: row.get(12)?,
+                        padding: row.get(13)?,
+                        padding_top: row.get(14)?,
+                        padding_right: row.get(15)?,
+                        padding_bottom: row.get(16)?,
+                        padding_left: row.get(17)?,
+                        border_radius: row.get(18)?,
+                        show_label: row.get::<_, Option<i64>>(19)?.map(|value| value != 0),
+                        auto_height_enabled: row.get::<_, i64>(20)? != 0,
+                        push_down_siblings: row.get::<_, i64>(21)? != 0,
+                        max_auto_height: row.get(22)?,
+                        max_auto_height_behavior: row.get(23)?,
                     },
-                    row.get::<_, i64>(19)?,
+                    row.get::<_, i64>(24)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -180,9 +187,30 @@ impl Db {
                 self.insert_view_layout_template_card(target_template_id, item, sort_order, None)?;
             self.conn.execute(
                 "
+                INSERT INTO view_layout_template_card_slots
+                  (
+                    template_id, card_id, sort_order, display_format, font_size,
+                    text_color, font_weight, text_align, updated_at
+                  )
+                SELECT
+                  ?, ?, sort_order, display_format, font_size,
+                  text_color, font_weight, text_align, CURRENT_TIMESTAMP
+                FROM view_layout_template_card_slots
+                WHERE template_id = ? AND card_id = ?
+                ORDER BY sort_order, slot_id
+                ",
+                params![
+                    target_template_id,
+                    card_id,
+                    source_template_id,
+                    source_card_id
+                ],
+            )?;
+            self.conn.execute(
+                "
                 INSERT OR IGNORE INTO view_layout_card_column_bindings
-                  (template_id, table_id, card_id, column_id, updated_at)
-                SELECT ?, table_id, ?, column_id, CURRENT_TIMESTAMP
+                  (template_id, table_id, card_id, sort_order, column_id, updated_at)
+                SELECT ?, table_id, ?, sort_order, column_id, CURRENT_TIMESTAMP
                 FROM view_layout_card_column_bindings
                 WHERE template_id = ? AND card_id = ?
                 ",

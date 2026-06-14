@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch
+} from "vue";
 
 import { useConfirmDialog } from "../../../composables/useConfirmDialog";
 
+import { isKnownCardPresetId, listCardPresets } from "./cardPresets/registry";
 import { useFreeLayoutStyleEditing } from "./useFreeLayoutStyleEditing";
 import ViewFreeLayoutBindingPanel from "./ViewFreeLayoutBindingPanel.vue";
 import {
   boxFromPoints,
   clampViewportScale,
+  DEFAULT_CARD_STYLE,
   DRAG_THRESHOLD,
   intersects,
   MIN_CARD_HEIGHT,
@@ -24,6 +33,7 @@ import type {
   CanvasElement,
   InteractionState,
   KeyboardLikeEvent,
+  LayoutStyleKey,
   PanDrag,
   PointerLikeEvent,
   PointerTarget,
@@ -36,14 +46,48 @@ import type {
   AppColumn,
   TableDetail,
   TemplatePreviewRecordSelection,
+  ViewLayoutAutoHeightBehavior,
   ViewLayoutCardItem,
   ViewLayoutCardColumnBinding,
+  ViewLayoutSlotDisplayFormat,
   ViewLayoutTemplate,
   ViewLayoutTemplateCard,
+  ViewLayoutTemplateCardSlot,
   ViewSelection,
   ViewTableSection
 } from "../../../types";
 import type { CSSProperties } from "vue";
+
+type TemplateSlotListItem = {
+  autoName: string;
+  cardId: number;
+  isBound: boolean;
+  label: string;
+  slotId: number;
+  statusLabel: string;
+};
+
+type SelectedTemplateSlotKey = {
+  cardId: number;
+  slotId: number;
+};
+
+type RenderedViewLayoutCardItem = ViewLayoutCardItem & {
+  renderBaseHeight: number;
+  renderBodyMode: "normal" | "scaleToFit" | "scroll" | "truncate";
+  renderContentScale: number;
+  renderContentViewportHeight: number | null;
+  renderNaturalHeight: number | null;
+};
+
+type SlotFontWeightValue = "inherit" | "normal" | "bold";
+type SlotTextAlignValue = "inherit" | "left" | "center" | "right";
+type FieldEntry = {
+  key: string;
+  label: string;
+  slot: ViewLayoutTemplateCardSlot | null;
+  value: string;
+};
 const props = withDefaults(
   defineProps<{
     detail: TableDetail | null;
@@ -104,12 +148,12 @@ const viewportOffsetY = ref(0);
 const panDrag = ref<PanDrag | null>(null);
 const isSpacePressed = ref(false);
 const isBindingEditorOpen = ref(false);
-const bindingDraft = ref<Record<number, number | null>>({});
+const bindingDraft = ref<Record<number, Array<number | null>>>({});
 const selectedBindingCardId = ref<number | null>(null);
+const selectedTemplateSlotKey = ref<SelectedTemplateSlotKey | null>(null);
+const cardContentMeasureElements = new Map<number, HTMLElement>();
+const measuredCardContentHeights = ref<Record<number, number>>({});
 const templatePreviewMenuOpen = ref(false);
-const templatePreviewBindingDraft = ref<Record<number, number | null>>({});
-const isTemplatePreviewBindingsOpen = ref(false);
-const hasManuallyToggledTemplatePreviewBindings = ref(false);
 const viewportPercent = computed(() => Math.round(viewportScale.value * 100));
 const isTemplateMode = computed(() => props.editorMode === "template");
 const isTemplatePreviewActive = computed(
@@ -154,9 +198,11 @@ const displayColumns = computed(() =>
   )
 );
 function isBoundToCurrentTable(item: ViewLayoutCardItem) {
-  return (
-    item.columnId !== null &&
-    displayColumns.value.some((column) => column.id === item.columnId)
+  if (item.slots.length > 0) {
+    return true;
+  }
+  return item.columns.some((binding) =>
+    displayColumns.value.some((column) => column.id === binding.columnId)
   );
 }
 
@@ -169,8 +215,51 @@ const visibleLayouts = computed(() =>
     return isBoundToCurrentTable(item) && (item.visible || editMode.value);
   })
 );
+const shouldMeasureAutoHeight = computed(() => {
+  if (isBindingEditorVisible.value) {
+    return false;
+  }
+
+  if (isTemplateMode.value) {
+    return isTemplatePreviewActive.value && currentRecord.value !== null;
+  }
+
+  return currentRecord.value !== null;
+});
 const selectedLayouts = computed(() =>
   visibleLayouts.value.filter((layout) => isSelected(layout.cardId))
+);
+const templateSlotTargetLayout = computed(() =>
+  isTemplateMode.value ? (selectedLayouts.value[0] ?? null) : null
+);
+const cardPresetItems = computed(() => [
+  { title: "標準", value: null },
+  ...listCardPresets().map((preset) => ({
+    title: preset.label,
+    value: preset.id
+  }))
+]);
+const selectedPresetId = computed(() => {
+  const [firstLayout, ...restLayouts] = selectedLayouts.value;
+  if (!firstLayout) {
+    return "";
+  }
+
+  const firstPresetId = firstLayout.presetId ?? null;
+  const hasMixedValues = restLayouts.some(
+    (layout) => (layout.presetId ?? null) !== firstPresetId
+  );
+  return hasMixedValues ? "" : firstPresetId;
+});
+const backgroundColorEditingDisabled = computed(
+  () =>
+    isTemplateMode.value &&
+    selectedLayouts.value.some((layout) => !canOverrideBackgroundColor(layout))
+);
+const backgroundColorDisabledReason = computed(() =>
+  backgroundColorEditingDisabled.value
+    ? "このプリセットでは背景色を変更できません。"
+    : ""
 );
 const bindableTemplateLayouts = computed(() =>
   isTemplateMode.value ? [] : draftLayouts.value.filter((item) => item.visible)
@@ -180,10 +269,8 @@ const hasUnboundTemplateForTable = computed(
     !isTemplateMode.value &&
     bindableTemplateLayouts.value.length > 0 &&
     displayColumns.value.length > 0 &&
-    bindableTemplateLayouts.value.every(
-      (layout) =>
-        layout.columnId === null ||
-        !displayColumns.value.some((column) => column.id === layout.columnId)
+    bindableTemplateLayouts.value.every((layout) =>
+      resolvedColumnIds(layout).every((columnId) => !columnId)
     )
 );
 const isBindingEditorVisible = computed(
@@ -192,10 +279,13 @@ const isBindingEditorVisible = computed(
 const shouldRenderCardContent = computed(
   () => editMode.value || isTemplatePreviewActive.value
 );
+const renderedVisibleLayouts = computed<RenderedViewLayoutCardItem[]>(() =>
+  buildRenderedLayouts(visibleLayouts.value)
+);
 const canvasLayouts = computed(() =>
   isBindingEditorVisible.value
     ? bindableTemplateLayouts.value
-    : visibleLayouts.value
+    : renderedVisibleLayouts.value
 );
 const bindingColumnItems = computed(() =>
   displayColumns.value.map((column) => ({
@@ -290,31 +380,153 @@ const templatePreviewLabel = computed(() => {
   }
   return `${selected.tableDisplayName} / ${selected.recordLabel}`;
 });
-const bindingDraftValues = computed(() =>
-  Object.values(bindingDraft.value).filter(
-    (columnId): columnId is number => columnId !== null
-  )
-);
-const templatePreviewBindingValues = computed(() =>
-  Object.values(templatePreviewBindingDraft.value).filter(
-    (columnId): columnId is number => columnId !== null
-  )
-);
-const templatePreviewBoundCount = computed(
-  () => templatePreviewBindingValues.value.length
-);
-const templatePreviewUnboundCount = computed(
-  () => props.templateCards.length - templatePreviewBoundCount.value
-);
-const hasDuplicateBindingColumns = computed(() => {
-  const values = bindingDraftValues.value;
-  return new Set(values).size !== values.length;
+const templateSlotItems = computed<TemplateSlotListItem[]>(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return [];
+  }
+
+  const columnIds = resolvedColumnIds(layout);
+  return sortedSlots(layout).map((slot, index) => {
+    const columnId = columnIds[index] ?? null;
+    const autoName = `スロット${index + 1}`;
+    const boundLabel = columnId === null ? null : columnDisplayName(columnId);
+
+    return {
+      autoName,
+      cardId: layout.cardId,
+      isBound: columnId !== null,
+      label: boundLabel ?? autoName,
+      slotId: slot.slotId,
+      statusLabel: columnId === null ? "未紐付け" : "紐付け済み"
+    };
+  });
 });
+const selectedTemplateSlotItem = computed(() => {
+  const key = selectedTemplateSlotKey.value;
+  if (!key) {
+    return null;
+  }
+
+  return (
+    templateSlotItems.value.find(
+      (slot) => slot.cardId === key.cardId && slot.slotId === key.slotId
+    ) ?? null
+  );
+});
+const selectedTemplateSlot = computed<ViewLayoutTemplateCardSlot | null>(() => {
+  const key = selectedTemplateSlotKey.value;
+  const layout = templateSlotTargetLayout.value;
+  if (!key || !layout || layout.cardId !== key.cardId) {
+    return null;
+  }
+
+  return sortedSlots(layout).find((slot) => slot.slotId === key.slotId) ?? null;
+});
+const templateSlotTargetCardLabel = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  return layout ? cardBindingLabel(layout, 0) : "";
+});
+const selectedTemplateSlotDisplayFormat =
+  computed<ViewLayoutSlotDisplayFormat | null>(() =>
+    slotDisplayFormatValue(selectedTemplateSlot.value)
+  );
+const selectedTemplateSlotFontSizeInherited = computed(
+  () => typeof selectedTemplateSlot.value?.fontSize !== "number"
+);
+const selectedTemplateSlotFontSize = computed<number | "">(() =>
+  typeof selectedTemplateSlot.value?.fontSize === "number"
+    ? selectedTemplateSlot.value.fontSize
+    : ""
+);
+const selectedTemplateSlotFontSizePlaceholder = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return "継承";
+  }
+  return `継承 (${layoutStyleValue(layout, "fontSize")}px)`;
+});
+const selectedTemplateSlotTextColor = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return themeColorInputValue("--v-theme-on-surface");
+  }
+
+  const value = resolvedSlotTextColor(layout, selectedTemplateSlot.value);
+  return typeof value === "string" && value
+    ? value
+    : themeColorInputValue("--v-theme-on-surface");
+});
+const selectedTemplateSlotTextColorInherited = computed(
+  () => !selectedTemplateSlot.value?.textColor
+);
+const selectedTemplateSlotFontWeight = computed<SlotFontWeightValue>(() => {
+  const value = slotFontWeightValue(selectedTemplateSlot.value);
+  return value ?? "inherit";
+});
+const selectedTemplateSlotTextAlign = computed<SlotTextAlignValue>(() => {
+  const value = slotTextAlignValue(selectedTemplateSlot.value);
+  return value ?? "inherit";
+});
+const selectedTemplateSlotInheritedPreview = computed(() => {
+  const layout = templateSlotTargetLayout.value;
+  if (!layout) {
+    return null;
+  }
+
+  const inheritedTextColor = layoutStyleValue(layout, "textColor");
+  const resolvedTextColor =
+    typeof inheritedTextColor === "string" && inheritedTextColor
+      ? inheritedTextColor
+      : themeColorInputValue("--v-theme-on-surface");
+  const inheritedFontWeight = layoutStyleValue(layout, "fontWeight");
+  const inheritedTextAlign = layoutStyleValue(layout, "textAlign");
+
+  return {
+    fontSizeLabel: `${layoutStyleValue(layout, "fontSize")}px`,
+    fontWeightLabel: inheritedFontWeight === "bold" ? "太字" : "標準",
+    textAlignLabel:
+      inheritedTextAlign === "center"
+        ? "中央"
+        : inheritedTextAlign === "right"
+          ? "右"
+          : "左",
+    textColorLabel:
+      typeof inheritedTextColor === "string" && inheritedTextColor
+        ? inheritedTextColor
+        : "既定色",
+    textColorValue: resolvedTextColor
+  };
+});
+const selectedTemplateSlotFontWeightResolvedLabel = computed(() => {
+  if (selectedTemplateSlotFontWeight.value === "inherit") {
+    return `継承中: ${
+      selectedTemplateSlotInheritedPreview.value?.fontWeightLabel ?? "標準"
+    }`;
+  }
+  return selectedTemplateSlotFontWeight.value === "bold"
+    ? "個別設定: 太字"
+    : "個別設定: 標準";
+});
+const selectedTemplateSlotTextAlignResolvedLabel = computed(() => {
+  if (selectedTemplateSlotTextAlign.value === "inherit") {
+    return `継承中: ${
+      selectedTemplateSlotInheritedPreview.value?.textAlignLabel ?? "左"
+    }`;
+  }
+  return selectedTemplateSlotTextAlign.value === "center"
+    ? "個別設定: 中央"
+    : selectedTemplateSlotTextAlign.value === "right"
+      ? "個別設定: 右"
+      : "個別設定: 左";
+});
+const bindingDraftValues = computed(() =>
+  Object.values(bindingDraft.value)
+    .flat()
+    .filter((columnId): columnId is number => columnId !== null)
+);
 const canSaveBindingDraft = computed(
-  () =>
-    bindingDraftValues.value.length > 0 &&
-    !hasDuplicateBindingColumns.value &&
-    !props.saving
+  () => bindingDraftValues.value.length > 0 && !props.saving
 );
 
 const selectedCardHasOverride = computed(
@@ -334,48 +546,11 @@ watch(
   { immediate: true }
 );
 watch(
-  () =>
-    [
-      props.templatePreviewBindings,
-      props.templateCards,
-      props.templatePreviewSelectedItem
-    ] as const,
-  () => {
-    resetTemplatePreviewBindingDraft();
-  },
-  { immediate: true }
-);
-watch(
-  () => props.templatePreviewSelectedItem,
-  (selected, previous) => {
-    if (selected === null) {
-      isTemplatePreviewBindingsOpen.value = false;
-      hasManuallyToggledTemplatePreviewBindings.value = false;
-      return;
-    }
-
-    if (
-      selected !== previous &&
-      !hasManuallyToggledTemplatePreviewBindings.value
-    ) {
-      isTemplatePreviewBindingsOpen.value =
-        templatePreviewUnboundCount.value > 0;
-    }
-  }
-);
-watch(templatePreviewUnboundCount, (count) => {
-  if (
-    isTemplatePreviewActive.value &&
-    !hasManuallyToggledTemplatePreviewBindings.value
-  ) {
-    isTemplatePreviewBindingsOpen.value = count > 0;
-  }
-});
-watch(
   () => selectedRecordPanelKey.value,
   () => {
     clearSelection();
     closeBindingEditor();
+    selectedTemplateSlotKey.value = null;
     resetViewport();
   }
 );
@@ -396,9 +571,34 @@ watch(editMode, (enabled) => {
     selectionDrag.value = null;
     panDrag.value = null;
     isSpacePressed.value = false;
+    selectedTemplateSlotKey.value = null;
     resetViewport();
   }
 });
+watch(
+  [templateSlotTargetLayout, templateSlotItems],
+  ([layout, slotItems]) => {
+    if (!layout || slotItems.length === 0) {
+      selectedTemplateSlotKey.value = null;
+      return;
+    }
+
+    const selected = selectedTemplateSlotKey.value;
+    if (
+      selected &&
+      selected.cardId === layout.cardId &&
+      slotItems.some((slot) => slot.slotId === selected.slotId)
+    ) {
+      return;
+    }
+
+    const [firstSlot] = slotItems;
+    selectedTemplateSlotKey.value = firstSlot
+      ? { cardId: firstSlot.cardId, slotId: firstSlot.slotId }
+      : null;
+  },
+  { immediate: true }
+);
 watch(isBindingEditorVisible, (visible) => {
   if (visible) {
     resetBindingDraft();
@@ -416,6 +616,14 @@ watch(isBindingEditorVisible, (visible) => {
 
   selectedBindingCardId.value = null;
 });
+watch(
+  [canvasLayouts, currentRecord, shouldMeasureAutoHeight, () => editMode.value],
+  async () => {
+    await nextTick();
+    measureCardContentHeights();
+  },
+  { deep: true, immediate: true }
+);
 onMounted(() => {
   globalThis.addEventListener?.("keydown", handleKeyDown);
   globalThis.addEventListener?.("keyup", handleKeyUp);
@@ -429,12 +637,66 @@ function columnById(columnId: number) {
   return displayColumns.value.find((column) => column.id === columnId) ?? null;
 }
 
-function effectiveColumnId(layout: ViewLayoutCardItem) {
-  if (isTemplatePreviewActive.value) {
-    return templatePreviewBindingDraft.value[layout.cardId] ?? null;
+function normalizedBindingIds(columnIds: Array<number | null>) {
+  return columnIds.length > 0 ? columnIds : [null];
+}
+
+function sortedSlots(layout: ViewLayoutCardItem | ViewLayoutTemplateCard) {
+  return [...layout.slots].sort(
+    (left, right) => left.sortOrder - right.sortOrder
+  );
+}
+
+function slotDisplayFormatValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): ViewLayoutSlotDisplayFormat | null {
+  return slot?.displayFormat ?? null;
+}
+
+function slotFontWeightValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): "normal" | "bold" | null {
+  return slot?.fontWeight ?? null;
+}
+
+function slotTextAlignValue(
+  slot: ViewLayoutTemplateCardSlot | null | undefined
+): "left" | "center" | "right" | null {
+  return slot?.textAlign ?? null;
+}
+
+function layoutColumnIds(layout: ViewLayoutCardItem) {
+  return normalizedBindingIds(
+    [...layout.columns]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((binding) => binding.columnId)
+  );
+}
+
+function templatePreviewColumnIds(layout: ViewLayoutCardItem) {
+  return normalizedBindingIds(
+    props.templatePreviewBindings
+      .filter((binding) => binding.cardId === layout.cardId)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((binding) => binding.columnId)
+  );
+}
+
+function resolvedColumnIds(layout: ViewLayoutCardItem) {
+  const columnIds =
+    isTemplateMode.value && isTemplatePreviewActive.value
+      ? templatePreviewColumnIds(layout)
+      : layoutColumnIds(layout);
+  const slotCount = sortedSlots(layout).length;
+
+  if (slotCount > 0) {
+    return Array.from(
+      { length: slotCount },
+      (_, index) => columnIds[index] ?? null
+    );
   }
 
-  return layout.columnId;
+  return columnIds;
 }
 
 function fieldValue(column: AppColumn) {
@@ -445,25 +707,40 @@ function fieldLabel(columnId: number) {
   return columnById(columnId)?.displayName ?? "";
 }
 
-function fieldLabelByLayout(layout: ViewLayoutCardItem) {
+function cardSummaryLabel(layout: ViewLayoutCardItem) {
   if (isTemplateMode.value) {
-    const columnId = effectiveColumnId(layout);
-    if (isTemplatePreviewActive.value && columnId !== null) {
-      return fieldLabel(columnId);
+    const columnIds = resolvedColumnIds(layout).filter(
+      (columnId): columnId is number => columnId !== null
+    );
+    if (isTemplatePreviewActive.value && columnIds.length > 0) {
+      const firstLabel = fieldLabel(columnIds[0]);
+      return columnIds.length > 1
+        ? `${firstLabel} ほか${columnIds.length - 1}件`
+        : firstLabel;
     }
     return layout.cardId > 0 ? `カード #${layout.cardId}` : "新規カード";
   }
-  return layout.columnId === null ? "未紐付け" : fieldLabel(layout.columnId);
+
+  const columnIds = layoutColumnIds(layout).filter(
+    (columnId): columnId is number => columnId !== null
+  );
+  if (columnIds.length === 0) {
+    return "未紐付け";
+  }
+  const firstLabel = fieldLabel(columnIds[0]);
+  return columnIds.length > 1
+    ? `${firstLabel} ほか${columnIds.length - 1}件`
+    : firstLabel;
 }
 
 function removeButtonLabel(layout: ViewLayoutCardItem) {
   if (isTemplateMode.value) {
-    return `${fieldLabelByLayout(layout)} を削除`;
+    return `${cardSummaryLabel(layout)} を削除`;
   }
 
   return layout.visible
-    ? `${fieldLabelByLayout(layout)}を非表示にする`
-    : `${fieldLabelByLayout(layout)}を表示に戻す`;
+    ? `${cardSummaryLabel(layout)}を非表示にする`
+    : `${cardSummaryLabel(layout)}を表示に戻す`;
 }
 
 function removeButtonIcon(layout: ViewLayoutCardItem) {
@@ -479,17 +756,82 @@ function fieldValueByColumnId(columnId: number) {
   return column ? fieldValue(column) : "";
 }
 
-function fieldValueByLayout(layout: ViewLayoutCardItem) {
-  if (isTemplateMode.value) {
-    if (!isTemplatePreviewActive.value) {
-      return "カード枠";
-    }
-    const columnId = effectiveColumnId(layout);
-    return columnId === null
-      ? "一時紐付けなし"
-      : fieldValueByColumnId(columnId);
+function fieldEntriesByLayout(layout: ViewLayoutCardItem): FieldEntry[] {
+  const slotCount = sortedSlots(layout).length;
+  const columnIds = resolvedColumnIds(layout);
+
+  if (slotCount === 0) {
+    return columnIds
+      .filter((columnId): columnId is number => columnId !== null)
+      .map((columnId, index) => ({
+        key: `${layout.cardId}:${columnId}:${index}`,
+        label: fieldLabel(columnId),
+        slot: null,
+        value: fieldValueByColumnId(columnId)
+      }));
   }
-  return layout.columnId === null ? "" : fieldValueByColumnId(layout.columnId);
+
+  return sortedSlots(layout).map((slot, index) => {
+    const columnId = columnIds[index] ?? null;
+    return {
+      key: `${layout.cardId}:slot:${slot.slotId}`,
+      label: columnId === null ? `スロット ${index + 1}` : fieldLabel(columnId),
+      slot,
+      value: columnId === null ? "未設定" : fieldValueByColumnId(columnId)
+    };
+  });
+}
+
+function resolvedSlotFontSize(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slot?.fontSize ?? layoutStyleValue(layout, "fontSize");
+}
+
+function resolvedSlotTextColor(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slot?.textColor ?? layoutStyleValue(layout, "textColor");
+}
+
+function resolvedSlotFontWeight(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slotFontWeightValue(slot) ?? layoutStyleValue(layout, "fontWeight");
+}
+
+function resolvedSlotTextAlign(
+  layout: ViewLayoutCardItem,
+  slot: ViewLayoutTemplateCardSlot | null
+) {
+  return slotTextAlignValue(slot) ?? layoutStyleValue(layout, "textAlign");
+}
+
+function fieldEntryValueStyle(
+  layout: ViewLayoutCardItem,
+  entry: FieldEntry
+): CSSProperties {
+  if (slotDisplayFormatValue(entry.slot) === "plain") {
+    // v1 keeps the default presentation; storing the value now allows future expansion.
+  }
+
+  const fontSize = resolvedSlotFontSize(layout, entry.slot);
+  const textColor = resolvedSlotTextColor(layout, entry.slot);
+  const fontWeight = resolvedSlotFontWeight(layout, entry.slot);
+  const textAlign = resolvedSlotTextAlign(layout, entry.slot);
+
+  return {
+    color: textColor ? String(textColor) : undefined,
+    fontSize: typeof fontSize === "number" ? `${fontSize}px` : undefined,
+    fontWeight: typeof fontWeight === "string" ? fontWeight : undefined,
+    textAlign:
+      typeof textAlign === "string"
+        ? (textAlign as CSSProperties["textAlign"])
+        : undefined
+  };
 }
 
 function cardBindingLabel(layout: ViewLayoutCardItem, index: number) {
@@ -505,42 +847,27 @@ function columnDisplayName(columnId: number | null) {
   return columnById(columnId)?.displayName ?? "未紐付け";
 }
 
-function setBindingDraft(cardId: number, columnId: number | null) {
+function setBindingDraft(
+  cardId: number,
+  index: number,
+  columnId: number | null
+) {
   selectBindingCard(cardId);
+  const next = [...(bindingDraft.value[cardId] ?? [null])];
+  next[index] = columnId;
   bindingDraft.value = {
     ...bindingDraft.value,
-    [cardId]: columnId
+    [cardId]: normalizedBindingIds(next)
   };
 }
 
 function resetBindingDraft() {
   bindingDraft.value = Object.fromEntries(
-    draftLayouts.value.map((layout) => [layout.cardId, layout.columnId])
-  );
-}
-
-function resetTemplatePreviewBindingDraft() {
-  templatePreviewBindingDraft.value = Object.fromEntries(
-    props.templateCards.map((card) => [
-      card.cardId,
-      props.templatePreviewBindings.find(
-        (binding) => binding.cardId === card.cardId
-      )?.columnId ?? null
+    draftLayouts.value.map((layout) => [
+      layout.cardId,
+      resolvedColumnIds(layout)
     ])
   );
-}
-
-function setTemplatePreviewBinding(cardId: number, columnId: unknown) {
-  const nextColumnId = typeof columnId === "number" ? columnId : null;
-  templatePreviewBindingDraft.value = {
-    ...templatePreviewBindingDraft.value,
-    [cardId]: nextColumnId
-  };
-}
-
-function toggleTemplatePreviewBindings() {
-  hasManuallyToggledTemplatePreviewBindings.value = true;
-  isTemplatePreviewBindingsOpen.value = !isTemplatePreviewBindingsOpen.value;
 }
 
 function selectTemplatePreviewRecord(value: unknown) {
@@ -593,7 +920,10 @@ function clearRecordTemplate() {
 const hasUnsavedBindingChanges = computed(() => {
   if (!isBindingEditorVisible.value) return false;
   return draftLayouts.value.some(
-    (layout) => bindingDraft.value[layout.cardId] !== layout.columnId
+    (layout) =>
+      JSON.stringify(
+        normalizedBindingIds(bindingDraft.value[layout.cardId] ?? [null])
+      ) !== JSON.stringify(layoutColumnIds(layout))
   );
 });
 
@@ -607,6 +937,132 @@ function openBindingEditor() {
 function closeBindingEditor() {
   isBindingEditorOpen.value = false;
   selectedBindingCardId.value = null;
+}
+
+function addBindingSlot(cardId: number) {
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: [...(bindingDraft.value[cardId] ?? [null]), null]
+  };
+  selectBindingCard(cardId);
+}
+
+function removeBindingSlot(cardId: number, index: number) {
+  const current = [...(bindingDraft.value[cardId] ?? [null])];
+  if (current.length <= 1) {
+    bindingDraft.value = {
+      ...bindingDraft.value,
+      [cardId]: [null]
+    };
+    return;
+  }
+  current.splice(index, 1);
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: normalizedBindingIds(current)
+  };
+}
+
+function moveBindingSlot(cardId: number, index: number, direction: -1 | 1) {
+  const current = [...(bindingDraft.value[cardId] ?? [null])];
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= current.length) {
+    return;
+  }
+  const [moved] = current.splice(index, 1);
+  current.splice(nextIndex, 0, moved);
+  bindingDraft.value = {
+    ...bindingDraft.value,
+    [cardId]: current
+  };
+}
+
+function nextTemplateSlotId(layout: ViewLayoutCardItem) {
+  return Math.min(0, ...layout.slots.map((slot) => slot.slotId)) - 1;
+}
+
+function addTemplateSlot(cardId: number) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout) {
+    return;
+  }
+
+  const slotId = nextTemplateSlotId(layout);
+
+  updateLayout(
+    {
+      ...layout,
+      slots: [
+        ...sortedSlots(layout),
+        {
+          displayFormat: null,
+          fontSize: null,
+          fontWeight: null,
+          slotId,
+          sortOrder: layout.slots.length,
+          textAlign: null,
+          textColor: null
+        }
+      ]
+    },
+    true
+  );
+  selectedTemplateSlotKey.value = { cardId, slotId };
+  setSingleSelection(cardId);
+}
+
+function removeTemplateSlot(cardId: number, index: number) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout) {
+    return;
+  }
+
+  const nextSlots = sortedSlots(layout)
+    .filter((_, slotIndex) => slotIndex !== index)
+    .map((slot, slotIndex) => ({
+      ...slot,
+      sortOrder: slotIndex
+    }));
+
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots
+    },
+    true
+  );
+}
+
+function reorderTemplateSlots(cardId: number, orderedSlotIds: number[]) {
+  const layout = draftLayouts.value.find((item) => item.cardId === cardId);
+  if (!layout || orderedSlotIds.length !== layout.slots.length) {
+    return;
+  }
+
+  const slotMap = new Map(layout.slots.map((slot) => [slot.slotId, slot]));
+  const nextSlots = orderedSlotIds
+    .map((slotId, slotIndex) => {
+      const slot = slotMap.get(slotId);
+      return slot
+        ? {
+            ...slot,
+            sortOrder: slotIndex
+          }
+        : null;
+    })
+    .filter((slot): slot is NonNullable<typeof slot> => slot !== null);
+
+  if (nextSlots.length !== layout.slots.length) {
+    return;
+  }
+
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots
+    },
+    true
+  );
 }
 
 /**
@@ -641,6 +1097,100 @@ function isBindingCardSelected(cardId: number) {
   return selectedBindingCardId.value === cardId;
 }
 
+function isBindingSlotCountLocked(layout: ViewLayoutCardItem) {
+  return layout.slots.length > 0;
+}
+
+function selectTemplateSlot(cardId: number, slotId: number) {
+  selectedTemplateSlotKey.value = { cardId, slotId };
+  setSingleSelection(cardId);
+}
+
+function updateSelectedTemplateSlot(
+  updater: (slot: ViewLayoutTemplateCardSlot) => ViewLayoutTemplateCardSlot
+) {
+  const key = selectedTemplateSlotKey.value;
+  const layout = templateSlotTargetLayout.value;
+  if (!key || !layout || layout.cardId !== key.cardId) {
+    return;
+  }
+
+  const nextSlots = sortedSlots(layout).map((slot) =>
+    slot.slotId === key.slotId ? updater(slot) : slot
+  );
+  updateLayout(
+    {
+      ...layout,
+      slots: nextSlots
+    },
+    true
+  );
+}
+
+function applySelectedTemplateSlotDisplayFormat(
+  value: ViewLayoutSlotDisplayFormat | null
+) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    displayFormat: value
+  }));
+}
+
+function applySelectedTemplateSlotFontSizeFromInput(event: unknown) {
+  const rawValue =
+    (event as { target?: { value?: string } }).target?.value ?? "";
+  if (!rawValue) {
+    updateSelectedTemplateSlot((slot) => ({
+      ...slot,
+      fontSize: null
+    }));
+    return;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    fontSize: value
+  }));
+}
+
+function applySelectedTemplateSlotTextColorFromInput(event: unknown) {
+  const value = (event as { target?: { value?: string } }).target?.value ?? "";
+  if (!value) {
+    return;
+  }
+
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textColor: value
+  }));
+}
+
+function resetSelectedTemplateSlotTextColor() {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textColor: null
+  }));
+}
+
+function applySelectedTemplateSlotFontWeight(value: SlotFontWeightValue) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    fontWeight: value === "inherit" ? null : value
+  }));
+}
+
+function applySelectedTemplateSlotTextAlign(value: SlotTextAlignValue) {
+  updateSelectedTemplateSlot((slot) => ({
+    ...slot,
+    textAlign: value === "inherit" ? null : value
+  }));
+}
+
 function saveBindingDraft() {
   if (!canSaveBindingDraft.value) {
     return;
@@ -649,10 +1199,13 @@ function saveBindingDraft() {
   emit(
     "save-card-column-bindings",
     Object.entries(bindingDraft.value)
-      .map(([cardId, columnId]) => ({
-        cardId: Number(cardId),
-        columnId
-      }))
+      .flatMap(([cardId, columnIds]) =>
+        normalizedBindingIds(columnIds).map((columnId, sortOrder) => ({
+          cardId: Number(cardId),
+          columnId,
+          sortOrder
+        }))
+      )
       .filter(
         (binding): binding is ViewLayoutCardColumnBinding =>
           Number.isFinite(binding.cardId) && binding.columnId !== null
@@ -665,6 +1218,34 @@ function saveBindingDraft() {
 
 function shouldShowLabel(layout: ViewLayoutCardItem) {
   return layoutStyleValue(layout, "showLabel") !== false;
+}
+
+function baseLayoutForCard(cardId: number, fallback: ViewLayoutCardItem) {
+  return (
+    visibleLayouts.value.find((item) => item.cardId === cardId) ?? fallback
+  );
+}
+
+function normalizedPresetId(layout: { presetId?: string | null }) {
+  return isKnownCardPresetId(layout.presetId)
+    ? (layout.presetId ?? null)
+    : null;
+}
+
+function applyPresetId(value: string | null) {
+  if (!isTemplateMode.value || selectedLayouts.value.length === 0) {
+    return;
+  }
+
+  const presetId =
+    typeof value === "string" && isKnownCardPresetId(value) ? value : null;
+  updateLayouts(
+    selectedLayouts.value.map((layout) => ({
+      ...layout,
+      presetId
+    })),
+    true
+  );
 }
 
 function canvasBounds() {
@@ -787,6 +1368,302 @@ function updateLayout(item: ViewLayoutCardItem, save: boolean) {
   updateLayouts([item], save);
 }
 
+function sharedLayoutProperty<T>(
+  selector: (layout: ViewLayoutCardItem) => T
+): T | "" {
+  const [firstLayout, ...restLayouts] = selectedLayouts.value;
+  if (!firstLayout) {
+    return "";
+  }
+
+  const firstValue = selector(firstLayout);
+  const hasMixedValues = restLayouts.some(
+    (layout) => selector(layout) !== firstValue
+  );
+  return hasMixedValues ? "" : firstValue;
+}
+
+const autoHeightEnabledInspectorValue = computed(
+  () => sharedLayoutProperty((layout) => layout.autoHeightEnabled) === true
+);
+const pushDownSiblingsInspectorValue = computed(
+  () => sharedLayoutProperty((layout) => layout.pushDownSiblings) === true
+);
+const maxAutoHeightInspectorValue = computed<number | "">(() => {
+  const value = sharedLayoutProperty((layout) => layout.maxAutoHeight ?? null);
+  return typeof value === "number" ? value : "";
+});
+const maxAutoHeightBehaviorInspectorValue =
+  computed<ViewLayoutAutoHeightBehavior | null>(() => {
+    const value = sharedLayoutProperty(
+      (layout) => layout.maxAutoHeightBehavior
+    );
+    return value === "" ? null : value;
+  });
+
+function updateSelectedLayouts(
+  updater: (layout: ViewLayoutCardItem) => ViewLayoutCardItem
+) {
+  if (selectedLayouts.value.length === 0) {
+    return;
+  }
+
+  updateLayouts(selectedLayouts.value.map(updater), true);
+}
+
+function applyAutoHeightEnabledFromCheckbox(value: boolean | null) {
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    autoHeightEnabled: value === true
+  }));
+}
+
+function applyPushDownSiblingsFromCheckbox(value: boolean | null) {
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    pushDownSiblings: value === true
+  }));
+}
+
+function applyMaxAutoHeightFromInput(event: unknown) {
+  const value = Number(
+    (event as { target?: { value?: string } }).target?.value
+  );
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    maxAutoHeight: Number.isFinite(value) && value > 0 ? value : null
+  }));
+}
+
+function applyMaxAutoHeightBehavior(
+  value: ViewLayoutAutoHeightBehavior | null
+) {
+  if (!value) {
+    return;
+  }
+
+  updateSelectedLayouts((layout) => ({
+    ...layout,
+    maxAutoHeightBehavior: value
+  }));
+}
+
+function setCardContentMeasureElement(cardId: number, element: unknown) {
+  if (element instanceof HTMLElement) {
+    cardContentMeasureElements.set(cardId, element);
+    return;
+  }
+
+  cardContentMeasureElements.delete(cardId);
+  if (cardId in measuredCardContentHeights.value) {
+    const next = { ...measuredCardContentHeights.value };
+    delete next[cardId];
+    measuredCardContentHeights.value = next;
+  }
+}
+
+function measureCardContentHeights() {
+  const nextEntries = [...cardContentMeasureElements.entries()].map(
+    ([cardId, element]) => [cardId, Math.ceil(element.scrollHeight)] as const
+  );
+  const nextHeights = Object.fromEntries(nextEntries);
+  if (
+    JSON.stringify(nextHeights) ===
+    JSON.stringify(measuredCardContentHeights.value)
+  ) {
+    return;
+  }
+  measuredCardContentHeights.value = nextHeights;
+}
+
+function horizontalRangesOverlap(
+  left: Pick<ViewLayoutCardItem, "x" | "width">,
+  right: Pick<ViewLayoutCardItem, "x" | "width">
+) {
+  return left.x < right.x + right.width && left.x + left.width > right.x;
+}
+
+function resolvedPaddingValue(
+  layout: ViewLayoutCardItem,
+  key: "paddingTop" | "paddingBottom"
+) {
+  const sideValue = layout[key];
+  if (typeof sideValue === "number") {
+    return sideValue;
+  }
+  if (typeof layout.padding === "number") {
+    return layout.padding;
+  }
+  return DEFAULT_CARD_STYLE[key];
+}
+
+function naturalCardHeight(layout: ViewLayoutCardItem) {
+  if (!shouldMeasureAutoHeight.value || !layout.autoHeightEnabled) {
+    return null;
+  }
+
+  const contentHeight = measuredCardContentHeights.value[layout.cardId];
+  if (!Number.isFinite(contentHeight)) {
+    return null;
+  }
+
+  const paddingTop = resolvedPaddingValue(layout, "paddingTop");
+  const paddingBottom = resolvedPaddingValue(layout, "paddingBottom");
+  return contentHeight + paddingTop + paddingBottom;
+}
+
+function buildRenderedLayouts(
+  layouts: ViewLayoutCardItem[]
+): RenderedViewLayoutCardItem[] {
+  const originalLayoutMetrics = new Map(
+    layouts.map((layout) => [
+      layout.cardId,
+      {
+        bottom: layout.y + layout.height,
+        height: layout.height,
+        y: layout.y
+      }
+    ])
+  );
+
+  const rendered = layouts.map((layout) => {
+    const baseHeight = layout.height;
+    const naturalHeight = naturalCardHeight(layout);
+    const expandedHeight =
+      layout.autoHeightEnabled && naturalHeight !== null
+        ? Math.max(baseHeight, naturalHeight)
+        : baseHeight;
+    const maxAutoHeight =
+      typeof layout.maxAutoHeight === "number" && layout.maxAutoHeight > 0
+        ? Math.max(baseHeight, layout.maxAutoHeight)
+        : null;
+    const displayHeight =
+      maxAutoHeight === null
+        ? expandedHeight
+        : Math.min(expandedHeight, maxAutoHeight);
+    const bodyViewportHeight = Math.max(
+      0,
+      displayHeight -
+        resolvedPaddingValue(layout, "paddingTop") -
+        resolvedPaddingValue(layout, "paddingBottom")
+    );
+    const measuredContentHeight =
+      measuredCardContentHeights.value[layout.cardId];
+    const isOverflowing =
+      layout.autoHeightEnabled &&
+      maxAutoHeight !== null &&
+      expandedHeight > maxAutoHeight &&
+      Number.isFinite(measuredContentHeight) &&
+      measuredContentHeight > bodyViewportHeight;
+    const renderBodyMode = isOverflowing
+      ? layout.maxAutoHeightBehavior
+      : "normal";
+    const renderContentScale =
+      renderBodyMode === "scaleToFit" &&
+      Number.isFinite(measuredContentHeight) &&
+      measuredContentHeight > 0
+        ? Math.min(1, bodyViewportHeight / measuredContentHeight)
+        : 1;
+
+    return {
+      ...layout,
+      height: displayHeight,
+      renderBaseHeight: baseHeight,
+      renderBodyMode,
+      renderContentScale,
+      renderContentViewportHeight:
+        renderBodyMode === "normal" ? null : bodyViewportHeight,
+      renderNaturalHeight: naturalHeight
+    } satisfies RenderedViewLayoutCardItem;
+  });
+
+  const ordered = [...rendered].sort(
+    (left, right) =>
+      left.y - right.y || left.x - right.x || left.cardId - right.cardId
+  );
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    if (
+      !current.autoHeightEnabled ||
+      !current.pushDownSiblings ||
+      current.height <= current.renderBaseHeight
+    ) {
+      continue;
+    }
+
+    const currentBottom = current.y + current.height;
+    for (
+      let followerIndex = index + 1;
+      followerIndex < ordered.length;
+      followerIndex += 1
+    ) {
+      const follower = ordered[followerIndex];
+      if (!horizontalRangesOverlap(current, follower)) {
+        continue;
+      }
+      if (follower.y >= currentBottom || follower.y < current.y) {
+        continue;
+      }
+
+      const originalCurrentMetrics = originalLayoutMetrics.get(current.cardId);
+      const originalFollowerMetrics = originalLayoutMetrics.get(
+        follower.cardId
+      );
+      const originalCurrentBottom = originalCurrentMetrics
+        ? originalCurrentMetrics.bottom
+        : current.y + current.renderBaseHeight;
+      const originalGap = originalFollowerMetrics
+        ? originalFollowerMetrics.y - originalCurrentBottom
+        : follower.y - (current.y + current.renderBaseHeight);
+      const preservedGap = Math.max(0, originalGap);
+
+      follower.y = currentBottom + preservedGap;
+    }
+  }
+
+  return rendered;
+}
+
+function cardContentBodyClass(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+) {
+  const mode = "renderBodyMode" in layout ? layout.renderBodyMode : "normal";
+  return {
+    "is-scrollable": mode === "scroll",
+    "is-truncated": mode === "truncate"
+  };
+}
+
+function cardContentBodyStyle(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+): CSSProperties {
+  return {
+    maxHeight:
+      "renderContentViewportHeight" in layout &&
+      layout.renderContentViewportHeight !== null
+        ? `${layout.renderContentViewportHeight}px`
+        : undefined
+  };
+}
+
+function cardContentInnerStyle(
+  layout: ViewLayoutCardItem | RenderedViewLayoutCardItem
+): CSSProperties {
+  if (!("renderBodyMode" in layout) || layout.renderBodyMode !== "scaleToFit") {
+    return {};
+  }
+
+  return {
+    transform: `scale(${layout.renderContentScale})`,
+    transformOrigin: "top left",
+    width:
+      layout.renderContentScale > 0
+        ? `${100 / layout.renderContentScale}%`
+        : "100%"
+  };
+}
+
 const {
   applyBackgroundColorMode,
   applyFontWeightFromCheckbox,
@@ -797,6 +1674,7 @@ const {
   backgroundColorInputValue,
   cardContentStyle,
   cardStyle,
+  canOverrideBackgroundColor,
   hasTransparentBackground,
   isTransparentBackgroundSelected,
   layoutStyleValue,
@@ -807,6 +1685,22 @@ const {
   styleNumberInputValue,
   themeColorInputValue
 } = useFreeLayoutStyleEditing(selectedLayouts, updateLayouts);
+
+function applyBackgroundColorModeWithPolicy(mode: "color" | "transparent") {
+  if (backgroundColorEditingDisabled.value) {
+    return;
+  }
+
+  applyBackgroundColorMode(mode);
+}
+
+function applyStyleFromInputWithPolicy(key: LayoutStyleKey, event: unknown) {
+  if (key === "backgroundColor" && backgroundColorEditingDisabled.value) {
+    return;
+  }
+
+  applyStyleFromInput(key, event);
+}
 
 function pointerTarget(event: PointerLikeEvent) {
   return event.currentTarget as PointerTarget | null;
@@ -840,7 +1734,7 @@ function setSingleSelection(cardId: number) {
 }
 
 function setSelection(cardIds: number[]) {
-  const validIds = new Set(visibleLayouts.value.map((layout) => layout.cardId));
+  const validIds = new Set(canvasLayouts.value.map((layout) => layout.cardId));
   selectedCardIds.value = [...new Set(cardIds)].filter((cardId) =>
     validIds.has(cardId)
   );
@@ -1085,7 +1979,7 @@ function endPointer() {
 }
 
 function idsInSelectionBox(box: SelectionBox) {
-  return visibleLayouts.value
+  return canvasLayouts.value
     .filter((layout) =>
       intersects(box, {
         height: layout.height,
@@ -1203,7 +2097,9 @@ function addTemplateCard() {
   const next: ViewLayoutCardItem = {
     tableId: 0,
     cardId,
-    columnId: null,
+    columns: [],
+    slots: [],
+    presetId: null,
     label: null,
     x: 120 + offset,
     y: 120 + offset,
@@ -1223,6 +2119,10 @@ function addTemplateCard() {
     paddingLeft: null,
     borderRadius: null,
     showLabel: null,
+    autoHeightEnabled: false,
+    pushDownSiblings: false,
+    maxAutoHeight: null,
+    maxAutoHeightBehavior: "scaleToFit",
     hasOverride: false
   };
   draftLayouts.value = [...draftLayouts.value, next];
@@ -1244,7 +2144,9 @@ function templateCardToLayout(
   return {
     tableId: 0,
     cardId: card.cardId,
-    columnId: null,
+    columns: [],
+    slots: sortedSlots(card),
+    presetId: normalizedPresetId(card),
     label: null,
     x: card.x,
     y: card.y,
@@ -1264,6 +2166,10 @@ function templateCardToLayout(
     paddingLeft: card.paddingLeft,
     borderRadius: card.borderRadius,
     showLabel: card.showLabel,
+    autoHeightEnabled: card.autoHeightEnabled,
+    pushDownSiblings: card.pushDownSiblings,
+    maxAutoHeight: card.maxAutoHeight ?? null,
+    maxAutoHeightBehavior: card.maxAutoHeightBehavior,
     hasOverride: false
   };
 }
@@ -1273,6 +2179,16 @@ function layoutToTemplateCard(
 ): ViewLayoutTemplateCard {
   return {
     cardId: layout.cardId,
+    slots: sortedSlots(layout).map((slot, index) => ({
+      displayFormat: slot.displayFormat ?? null,
+      fontSize: slot.fontSize ?? null,
+      fontWeight: slot.fontWeight ?? null,
+      slotId: slot.slotId,
+      sortOrder: index,
+      textAlign: slot.textAlign ?? null,
+      textColor: slot.textColor ?? null
+    })),
+    presetId: normalizedPresetId(layout),
     label: null,
     x: layout.x,
     y: layout.y,
@@ -1291,7 +2207,11 @@ function layoutToTemplateCard(
     paddingBottom: layout.paddingBottom,
     paddingLeft: layout.paddingLeft,
     borderRadius: layout.borderRadius,
-    showLabel: layout.showLabel
+    showLabel: layout.showLabel,
+    autoHeightEnabled: layout.autoHeightEnabled,
+    pushDownSiblings: layout.pushDownSiblings,
+    maxAutoHeight: layout.maxAutoHeight ?? null,
+    maxAutoHeightBehavior: layout.maxAutoHeightBehavior
   };
 }
 </script>
@@ -1372,11 +2292,16 @@ function layoutToTemplateCard(
                 !editMode &&
                 !isBindingEditorVisible
             }"
+            :data-card-preset="normalizedPresetId(layout) ?? undefined"
             :style="cardStyle(layout)"
             @pointerdown.stop="
               isBindingEditorVisible
                 ? selectBindingCard(layout.cardId)
-                : startCardPointer($event, layout.cardId, layout)
+                : startCardPointer(
+                    $event,
+                    layout.cardId,
+                    baseLayoutForCard(layout.cardId, layout)
+                  )
             "
             @pointermove="
               movePointer($event);
@@ -1397,15 +2322,24 @@ function layoutToTemplateCard(
                 <div class="view-field-card-header">
                   <span>{{ cardBindingLabel(layout, index) }}</span>
                 </div>
-                <p class="view-field-card-value">
-                  {{ columnDisplayName(bindingDraft[layout.cardId] ?? null) }}
-                </p>
+                <div class="view-field-card-stack">
+                  <p
+                    v-for="(columnId, bindingIndex) in bindingDraft[
+                      layout.cardId
+                    ] ?? [null]"
+                    :key="`${layout.cardId}:${bindingIndex}`"
+                    class="view-field-card-value"
+                  >
+                    {{ columnDisplayName(columnId ?? null) }}
+                  </p>
+                </div>
               </div>
             </template>
             <template
               v-else-if="
                 shouldRenderCardContent ||
-                (!isTemplateMode && layout.columnId !== null)
+                (!isTemplateMode &&
+                  (layout.slots.length > 0 || layout.columns.length > 0))
               "
             >
               <v-tooltip
@@ -1445,21 +2379,67 @@ function layoutToTemplateCard(
                 :style="cardContentStyle(layout)"
               >
                 <div
-                  v-if="shouldShowLabel(layout)"
-                  class="view-field-card-header"
+                  class="view-field-card-body"
+                  :class="cardContentBodyClass(layout)"
+                  :style="cardContentBodyStyle(layout)"
                 >
-                  <span>{{ fieldLabelByLayout(layout) }}</span>
+                  <div
+                    :ref="
+                      (element) =>
+                        setCardContentMeasureElement(layout.cardId, element)
+                    "
+                    class="view-field-card-body-inner"
+                    :style="cardContentInnerStyle(layout)"
+                  >
+                    <div class="view-field-card-stack">
+                      <div
+                        v-for="entry in fieldEntriesByLayout(layout)"
+                        :key="entry.key"
+                        class="view-field-card-row"
+                      >
+                        <div
+                          v-if="shouldShowLabel(layout)"
+                          class="view-field-card-header"
+                        >
+                          <span>{{ entry.label }}</span>
+                        </div>
+                        <p
+                          class="view-field-card-value"
+                          :style="fieldEntryValueStyle(layout, entry)"
+                        >
+                          {{ entry.value }}
+                        </p>
+                      </div>
+                      <p
+                        v-if="
+                          isTemplateMode &&
+                          !isTemplatePreviewActive &&
+                          fieldEntriesByLayout(layout).length === 0
+                        "
+                        class="view-field-card-value"
+                      >
+                        カード枠
+                      </p>
+                      <p
+                        v-else-if="
+                          isTemplateMode &&
+                          isTemplatePreviewActive &&
+                          fieldEntriesByLayout(layout).length === 0
+                        "
+                        class="view-field-card-value"
+                      >
+                        一時紐付けなし
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p class="view-field-card-value">
-                  {{ fieldValueByLayout(layout) }}
-                </p>
               </div>
             </template>
             <template v-if="editMode && isSelected(layout.cardId)">
               <v-tooltip
                 v-for="handle in RESIZE_HANDLES"
                 :key="handle.direction"
-                :text="`${fieldLabelByLayout(layout)}を${handle.label}`"
+                :text="`${cardSummaryLabel(layout)}を${handle.label}`"
                 location="bottom"
               >
                 <template #activator="{ props: tooltipProps }">
@@ -1468,12 +2448,12 @@ function layoutToTemplateCard(
                     type="button"
                     class="view-field-resize-handle"
                     :class="`view-field-resize-handle-${handle.direction}`"
-                    :aria-label="`${fieldLabelByLayout(layout)}を${handle.label}`"
+                    :aria-label="`${cardSummaryLabel(layout)}を${handle.label}`"
                     @pointerdown.stop="
                       startResize(
                         $event,
                         layout.cardId,
-                        layout,
+                        baseLayoutForCard(layout.cardId, layout),
                         handle.direction
                       )
                     "
@@ -1520,9 +2500,9 @@ function layoutToTemplateCard(
         :can-save-binding-draft="canSaveBindingDraft"
         :card-binding-label="cardBindingLabel"
         :column-display-name="columnDisplayName"
-        :has-duplicate-binding-columns="hasDuplicateBindingColumns"
         :has-unbound-template-for-table="hasUnboundTemplateForTable"
         :is-binding-card-selected="isBindingCardSelected"
+        :is-binding-slot-count-locked="isBindingSlotCountLocked"
         :record-template-items="recordTemplateItems"
         :record-template-source-chip-label="recordTemplateSourceChipLabel"
         :record-template-source-color="recordTemplateSourceColor"
@@ -1533,41 +2513,113 @@ function layoutToTemplateCard(
         @clear-record-template="clearRecordTemplate"
         @close-binding-editor="closeBindingEditor"
         @save-binding-draft="saveBindingDraft"
+        @add-binding-slot="addBindingSlot"
+        @remove-binding-slot="removeBindingSlot"
+        @move-binding-slot-up="
+          (cardId, index) => moveBindingSlot(cardId, index, -1)
+        "
+        @move-binding-slot-down="
+          (cardId, index) => moveBindingSlot(cardId, index, 1)
+        "
         @select-binding-card="selectBindingCard"
         @set-binding-draft="setBindingDraft"
       />
       <ViewFreeLayoutStyleInspector
         v-else-if="editMode"
-        :apply-background-color-mode="applyBackgroundColorMode"
+        :add-template-slot="addTemplateSlot"
+        :apply-background-color-mode="applyBackgroundColorModeWithPolicy"
+        :apply-auto-height-enabled-from-checkbox="
+          applyAutoHeightEnabledFromCheckbox
+        "
         :apply-font-weight-from-checkbox="applyFontWeightFromCheckbox"
+        :apply-max-auto-height-behavior="applyMaxAutoHeightBehavior"
+        :apply-max-auto-height-from-input="applyMaxAutoHeightFromInput"
         :apply-number-style-from-input="applyNumberStyleFromInput"
+        :apply-preset-id="applyPresetId"
+        :apply-push-down-siblings-from-checkbox="
+          applyPushDownSiblingsFromCheckbox
+        "
         :apply-selected-style="applySelectedStyle"
+        :apply-selected-template-slot-display-format="
+          applySelectedTemplateSlotDisplayFormat
+        "
+        :apply-selected-template-slot-font-size-from-input="
+          applySelectedTemplateSlotFontSizeFromInput
+        "
+        :apply-selected-template-slot-font-weight="
+          applySelectedTemplateSlotFontWeight
+        "
+        :apply-selected-template-slot-text-align="
+          applySelectedTemplateSlotTextAlign
+        "
+        :apply-selected-template-slot-text-color-from-input="
+          applySelectedTemplateSlotTextColorFromInput
+        "
         :apply-show-label-from-checkbox="applyShowLabelFromCheckbox"
-        :apply-style-from-input="applyStyleFromInput"
+        :apply-style-from-input="applyStyleFromInputWithPolicy"
+        :auto-height-enabled-value="autoHeightEnabledInspectorValue"
+        :background-color-disabled="backgroundColorEditingDisabled"
+        :background-color-disabled-reason="backgroundColorDisabledReason"
         :background-color-input-value="backgroundColorInputValue"
-        :binding-column-items="bindingColumnItems"
-        :card-binding-label="cardBindingLabel"
-        :draft-layouts="draftLayouts"
+        :card-preset-items="cardPresetItems"
         :has-record-overrides="hasRecordOverrides"
         :is-template-mode="isTemplateMode"
-        :is-template-preview-active="isTemplatePreviewActive"
-        :is-template-preview-bindings-open="isTemplatePreviewBindingsOpen"
         :is-transparent-background-selected="isTransparentBackgroundSelected"
+        :max-auto-height-behavior-value="maxAutoHeightBehaviorInspectorValue"
+        :max-auto-height-input-value="maxAutoHeightInspectorValue"
+        :push-down-siblings-value="pushDownSiblingsInspectorValue"
+        :remove-template-slot="removeTemplateSlot"
+        :reorder-template-slots="reorderTemplateSlots"
         :reset-record-overrides="resetRecordOverrides"
         :reset-selected-card-override="resetSelectedCardOverride"
         :reset-selected-style="resetSelectedStyle"
         :selected-card-has-override="selectedCardHasOverride"
         :selected-layouts="selectedLayouts"
-        :set-template-preview-binding="setTemplatePreviewBinding"
+        :selected-preset-id="selectedPresetId"
+        :selected-slot-item="selectedTemplateSlotItem"
+        :selected-template-slot-display-format-value="
+          selectedTemplateSlotDisplayFormat
+        "
+        :selected-template-slot-font-size-inherited="
+          selectedTemplateSlotFontSizeInherited
+        "
+        :selected-template-slot-font-size-placeholder="
+          selectedTemplateSlotFontSizePlaceholder
+        "
+        :selected-template-slot-font-size-value="selectedTemplateSlotFontSize"
+        :selected-template-slot-inherited-preview="
+          selectedTemplateSlotInheritedPreview
+        "
+        :selected-template-slot-font-weight-value="
+          selectedTemplateSlotFontWeight
+        "
+        :selected-template-slot-font-weight-resolved-label="
+          selectedTemplateSlotFontWeightResolvedLabel
+        "
+        :selected-template-slot-key="
+          selectedTemplateSlotKey
+            ? `${selectedTemplateSlotKey.cardId}:${selectedTemplateSlotKey.slotId}`
+            : null
+        "
+        :selected-template-slot-text-align-value="selectedTemplateSlotTextAlign"
+        :selected-template-slot-text-align-resolved-label="
+          selectedTemplateSlotTextAlignResolvedLabel
+        "
+        :selected-template-slot-text-color-inherited="
+          selectedTemplateSlotTextColorInherited
+        "
+        :selected-template-slot-text-color-value="selectedTemplateSlotTextColor"
+        :reset-selected-template-slot-text-color="
+          resetSelectedTemplateSlotTextColor
+        "
+        :select-template-slot="selectTemplateSlot"
         :style-boolean-input-value="styleBooleanInputValue"
         :style-input-value="styleInputValue"
         :style-inspector-values="styleInspectorValues"
         :style-number-input-value="styleNumberInputValue"
-        :template-cards="templateCards"
-        :template-preview-binding-draft="templatePreviewBindingDraft"
-        :template-preview-bound-count="templatePreviewBoundCount"
+        :template-slot-items="templateSlotItems"
+        :template-slot-target-card-label="templateSlotTargetCardLabel"
         :theme-color-input-value="themeColorInputValue"
-        :toggle-template-preview-bindings="toggleTemplatePreviewBindings"
       />
     </div>
   </section>

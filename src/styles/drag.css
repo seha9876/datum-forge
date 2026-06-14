@@ -139,16 +139,32 @@
 }
 
 .view-field-card {
+  --card-border-color: rgba(var(--v-theme-outline), 0.2);
+  --card-background: rgba(var(--v-theme-surface), 0.86);
+  --card-box-shadow: 0 10px 24px rgba(var(--v-theme-shadow), 0.1);
+  --card-selection-border-color: var(--accent);
+  --card-selection-ring:
+    0 0 0 3px rgba(var(--v-theme-primary), 0.24),
+    0 0 0 6px rgba(var(--v-theme-primary), 0.08);
+  --card-box-shadow-selected: 0 18px 34px rgba(var(--v-theme-shadow), 0.2);
+  --card-border-radius: 14px;
+  --card-font-size: 16px;
+  --card-font-weight: 700;
+  --card-padding-top: 12px;
+  --card-padding-right: 12px;
+  --card-padding-bottom: 12px;
+  --card-padding-left: 12px;
+  --card-text-align: left;
   position: absolute;
   left: 0;
   top: 0;
   min-width: 120px;
   min-height: 64px;
-  padding: 0.8rem;
-  border: 1px solid rgba(var(--v-theme-outline), 0.2);
-  border-radius: 14px;
-  background: rgba(var(--v-theme-surface), 0.86);
-  box-shadow: 0 10px 24px rgba(var(--v-theme-shadow), 0.1);
+  overflow: hidden;
+  border: 1px solid var(--card-border-color);
+  border-radius: var(--card-border-radius);
+  background: var(--card-background);
+  box-shadow: var(--card-box-shadow);
   touch-action: none;
 }
 
@@ -161,16 +177,47 @@
 
 .view-field-card-content {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0.45rem;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
 
-.view-field-card-content.hide-label {
-  grid-template-rows: minmax(0, 1fr);
+.view-field-card-body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.view-field-card-body.is-scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.view-field-card-body.is-truncated {
+  overflow: hidden;
+}
+
+.view-field-card-body.is-truncated::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1.6rem;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--v-theme-surface), 0),
+    rgba(var(--v-theme-surface), 0.92)
+  );
+}
+
+.view-field-card-body-inner {
+  min-width: 0;
 }
 
 .view-field-card.editing {
@@ -178,11 +225,9 @@
 }
 
 .view-field-card.selected {
-  border-color: var(--accent);
-  background: rgba(var(--v-theme-primary-container), 0.96);
-  box-shadow:
-    0 0 0 2px rgba(var(--v-theme-primary), 0.18),
-    0 14px 30px rgba(var(--v-theme-shadow), 0.16);
+  border-color: var(--card-selection-border-color);
+  border-width: 2px;
+  box-shadow: var(--card-selection-ring), var(--card-box-shadow-selected);
 }
 
 .view-field-card.ghost {
@@ -194,7 +239,11 @@
 .view-field-card.ghost.selected {
   border-style: solid;
   border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary-container), 0.92);
+  border-width: 2px;
+  box-shadow:
+    0 0 0 3px rgba(var(--v-theme-primary), 0.26),
+    0 0 0 6px rgba(var(--v-theme-primary), 0.1),
+    0 14px 24px rgba(var(--v-theme-shadow), 0.16);
 }
 
 .view-binding-card-number {
@@ -228,7 +277,11 @@
 
 .view-field-card.hidden.selected {
   border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary-container), 0.72);
+  border-width: 2px;
+  box-shadow:
+    0 0 0 3px rgba(var(--v-theme-primary), 0.22),
+    0 0 0 6px rgba(var(--v-theme-primary), 0.08),
+    0 12px 22px rgba(var(--v-theme-shadow), 0.12);
   opacity: 0.82;
 }
 

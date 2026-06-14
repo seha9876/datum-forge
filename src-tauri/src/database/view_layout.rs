@@ -129,6 +129,10 @@ impl Db {
             [payload.template_id],
         )?;
         tx.execute(
+            "DELETE FROM view_layout_template_card_slots WHERE template_id = ?",
+            [payload.template_id],
+        )?;
+        tx.execute(
             "DELETE FROM view_layout_template_cards WHERE template_id = ?",
             [payload.template_id],
         )?;
@@ -266,19 +270,20 @@ impl Db {
         self.get_table_summary(payload.table_id)?;
         let mut stmt = self.conn.prepare(
             "
-            SELECT binding.card_id, binding.column_id
+            SELECT binding.card_id, binding.column_id, binding.sort_order
             FROM view_layout_card_column_bindings binding
             JOIN view_layout_template_cards card
               ON card.template_id = binding.template_id
              AND card.card_id = binding.card_id
             WHERE binding.template_id = ? AND binding.table_id = ?
-            ORDER BY card.sort_order, binding.card_id
+            ORDER BY card.sort_order, binding.card_id, binding.sort_order
             ",
         )?;
         let rows = stmt.query_map(params![payload.template_id, payload.table_id], |row| {
             Ok(ViewLayoutCardColumnBinding {
                 card_id: row.get(0)?,
                 column_id: row.get(1)?,
+                sort_order: row.get(2)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
@@ -310,6 +315,10 @@ impl Db {
                 params![payload.template_id, *card_id],
             )?;
             tx.execute(
+                "DELETE FROM view_layout_template_card_slots WHERE template_id = ? AND card_id = ?",
+                params![payload.template_id, *card_id],
+            )?;
+            tx.execute(
                 "DELETE FROM view_layout_template_cards WHERE template_id = ? AND card_id = ?",
                 params![payload.template_id, *card_id],
             )?;
@@ -320,10 +329,11 @@ impl Db {
             let explicit_card_id = existing_card_ids
                 .contains(&card.card_id)
                 .then_some(card.card_id);
-            self.insert_view_layout_template_card(
+            let card_id = self.insert_view_layout_template_card(
                 payload.template_id,
                 SaveViewLayoutCardItem {
                     card_id: card.card_id,
+                    preset_id: card.preset_id,
                     x: card.x,
                     y: card.y,
                     width: card.width,
@@ -342,10 +352,15 @@ impl Db {
                     padding_left: card.padding_left,
                     border_radius: card.border_radius,
                     show_label: card.show_label,
+                    auto_height_enabled: card.auto_height_enabled,
+                    push_down_siblings: card.push_down_siblings,
+                    max_auto_height: card.max_auto_height,
+                    max_auto_height_behavior: card.max_auto_height_behavior,
                 },
                 index as i64,
                 explicit_card_id,
             )?;
+            self.replace_view_layout_template_card_slots(payload.template_id, card_id, &card.slots)?;
         }
 
         Ok(())
@@ -403,13 +418,14 @@ impl Db {
             tx.execute(
                 "
                 INSERT INTO view_layout_card_column_bindings
-                  (template_id, table_id, card_id, column_id, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  (template_id, table_id, card_id, sort_order, column_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ",
                 params![
                     payload.template_id,
                     payload.table_id,
                     binding.card_id,
+                    binding.sort_order,
                     binding.column_id
                 ],
             )?;
@@ -441,6 +457,7 @@ impl Db {
             else {
                 continue;
             };
+            let _ = &item.preset_id;
             if item.card_id <= 0 {
                 continue;
             }

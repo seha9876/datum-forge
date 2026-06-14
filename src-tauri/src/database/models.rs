@@ -231,7 +231,9 @@ pub struct RecordTagBundle {
 pub struct ViewLayoutCardItem {
     pub table_id: i64,
     pub card_id: i64,
-    pub column_id: Option<i64>,
+    pub columns: Vec<ViewLayoutCardColumnBinding>,
+    pub slots: Vec<ViewLayoutTemplateCardSlot>,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -250,6 +252,10 @@ pub struct ViewLayoutCardItem {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
     pub has_override: bool,
 }
 
@@ -268,6 +274,8 @@ pub struct ViewLayoutTemplate {
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutTemplateCard {
     pub card_id: i64,
+    pub slots: Vec<ViewLayoutTemplateCardSlot>,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -287,6 +295,10 @@ pub struct ViewLayoutTemplateCard {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -652,6 +664,7 @@ pub struct DetachRecordTagPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SaveViewLayoutCardItem {
     pub card_id: i64,
+    pub preset_id: Option<String>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -670,6 +683,10 @@ pub struct SaveViewLayoutCardItem {
     pub padding_left: Option<f64>,
     pub border_radius: Option<f64>,
     pub show_label: Option<bool>,
+    pub auto_height_enabled: bool,
+    pub push_down_siblings: bool,
+    pub max_auto_height: Option<f64>,
+    pub max_auto_height_behavior: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -762,11 +779,24 @@ pub struct SaveViewLayoutTemplateCardsPayload {
     pub cards: Vec<ViewLayoutTemplateCard>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewLayoutTemplateCardSlot {
+    pub slot_id: i64,
+    pub sort_order: i64,
+    pub display_format: Option<String>,
+    pub font_size: Option<f64>,
+    pub text_color: Option<String>,
+    pub font_weight: Option<String>,
+    pub text_align: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewLayoutCardColumnBinding {
     pub card_id: i64,
     pub column_id: i64,
+    pub sort_order: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -774,6 +804,7 @@ pub struct ViewLayoutCardColumnBinding {
 pub struct ViewLayoutCardColumnBindingPayload {
     pub card_id: i64,
     pub column_id: i64,
+    pub sort_order: i64,
 }
 
 #[derive(Debug, Deserialize)]

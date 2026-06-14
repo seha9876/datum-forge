@@ -1,5 +1,6 @@
 import { computed } from "vue";
 
+import { getCardPresetBackgroundColorMode } from "./cardPresets/registry";
 import {
   DEFAULT_CARD_STYLE,
   type InputLikeEvent,
@@ -27,6 +28,12 @@ export function useFreeLayoutStyleEditing(
   selectedLayouts: ComputedRef<ViewLayoutCardItem[]>,
   updateLayouts: UpdateLayouts
 ) {
+  function canOverrideBackgroundColor(layout: ViewLayoutCardItem) {
+    return (
+      getCardPresetBackgroundColorMode(layout.presetId) === "replace-preset"
+    );
+  }
+
   function layoutStyleValue(
     layout: ViewLayoutCardItem,
     key: LayoutStyleKey
@@ -70,21 +77,37 @@ export function useFreeLayoutStyleEditing(
   function cardStyle(layout: ViewLayoutCardItem): CSSProperties {
     const backgroundColor = layoutStyleValue(layout, "backgroundColor");
     const textColor = layoutStyleValue(layout, "textColor");
+    const canApplyBackgroundColor = canOverrideBackgroundColor(layout);
     return {
-      ...(backgroundColor ? { backgroundColor: String(backgroundColor) } : {}),
-      borderRadius: `${layoutStyleValue(layout, "borderRadius")}px`,
-      ...(textColor ? { color: String(textColor) } : {}),
-      fontSize: `${layoutStyleValue(layout, "fontSize")}px`,
-      fontWeight: String(layoutStyleValue(layout, "fontWeight")),
+      "--card-background":
+        canApplyBackgroundColor &&
+        backgroundColor &&
+        backgroundColor !== "transparent"
+          ? String(backgroundColor)
+          : undefined,
+      "--card-border-radius": `${layoutStyleValue(layout, "borderRadius")}px`,
+      "--card-font-size": `${layoutStyleValue(layout, "fontSize")}px`,
+      "--card-font-weight": String(layoutStyleValue(layout, "fontWeight")),
+      "--card-padding-bottom": `${layoutStyleValue(layout, "paddingBottom")}px`,
+      "--card-padding-left": `${layoutStyleValue(layout, "paddingLeft")}px`,
+      "--card-padding-right": `${layoutStyleValue(layout, "paddingRight")}px`,
+      "--card-padding-top": `${layoutStyleValue(layout, "paddingTop")}px`,
+      "--card-text-align": String(layoutStyleValue(layout, "textAlign")),
+      "--card-text-color": textColor ? String(textColor) : undefined,
+      backgroundColor:
+        canApplyBackgroundColor && backgroundColor === "transparent"
+          ? "transparent"
+          : undefined,
+      borderRadius: "var(--card-border-radius)",
+      color: "var(--card-text-color, inherit)",
+      fontSize: "var(--card-font-size)",
+      fontWeight: "var(--card-font-weight)",
       height: `${layout.height}px`,
-      paddingBottom: `${layoutStyleValue(layout, "paddingBottom")}px`,
-      paddingLeft: `${layoutStyleValue(layout, "paddingLeft")}px`,
-      paddingRight: `${layoutStyleValue(layout, "paddingRight")}px`,
-      paddingTop: `${layoutStyleValue(layout, "paddingTop")}px`,
-      textAlign: layoutStyleValue(
-        layout,
-        "textAlign"
-      ) as CSSProperties["textAlign"],
+      paddingBottom: "var(--card-padding-bottom)",
+      paddingLeft: "var(--card-padding-left)",
+      paddingRight: "var(--card-padding-right)",
+      paddingTop: "var(--card-padding-top)",
+      textAlign: "var(--card-text-align)" as CSSProperties["textAlign"],
       transform: `translate(${layout.x}px, ${layout.y}px)`,
       width: `${layout.width}px`
     };
@@ -144,7 +167,10 @@ export function useFreeLayoutStyleEditing(
   }
 
   function hasTransparentBackground(layout: ViewLayoutCardItem) {
-    return layoutStyleValue(layout, "backgroundColor") === "transparent";
+    return (
+      canOverrideBackgroundColor(layout) &&
+      layoutStyleValue(layout, "backgroundColor") === "transparent"
+    );
   }
 
   function applySelectedStyle(key: LayoutStyleKey, value: LayoutStyleValue) {
@@ -252,6 +278,7 @@ export function useFreeLayoutStyleEditing(
     hasTransparentBackground,
     isTransparentBackgroundSelected,
     layoutStyleValue,
+    canOverrideBackgroundColor,
     resetSelectedStyle,
     styleBooleanInputValue,
     styleInputValue,

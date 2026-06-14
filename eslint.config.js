@@ -37,7 +37,8 @@ export default [
         HTMLElement: "readonly",
         HTMLSelectElement: "readonly",
         MouseEvent: "readonly",
-        PointerEvent: "readonly"
+        PointerEvent: "readonly",
+        WheelEvent: "readonly"
       }
     },
     plugins: {
