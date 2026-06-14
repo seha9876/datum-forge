@@ -1237,6 +1237,17 @@ function naturalCardHeight(layout: ViewLayoutCardItem) {
 function buildRenderedLayouts(
   layouts: ViewLayoutCardItem[]
 ): RenderedViewLayoutCardItem[] {
+  const originalLayoutMetrics = new Map(
+    layouts.map((layout) => [
+      layout.cardId,
+      {
+        bottom: layout.y + layout.height,
+        height: layout.height,
+        y: layout.y
+      }
+    ])
+  );
+
   const rendered = layouts.map((layout) => {
     const baseHeight = layout.height;
     const naturalHeight = naturalCardHeight(layout);
@@ -1317,7 +1328,19 @@ function buildRenderedLayouts(
         continue;
       }
 
-      follower.y = currentBottom;
+      const originalCurrentMetrics = originalLayoutMetrics.get(current.cardId);
+      const originalFollowerMetrics = originalLayoutMetrics.get(
+        follower.cardId
+      );
+      const originalCurrentBottom = originalCurrentMetrics
+        ? originalCurrentMetrics.bottom
+        : current.y + current.renderBaseHeight;
+      const originalGap = originalFollowerMetrics
+        ? originalFollowerMetrics.y - originalCurrentBottom
+        : follower.y - (current.y + current.renderBaseHeight);
+      const preservedGap = Math.max(0, originalGap);
+
+      follower.y = currentBottom + preservedGap;
     }
   }
 
